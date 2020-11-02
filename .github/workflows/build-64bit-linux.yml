@@ -5,7 +5,8 @@ on:
     branches: [ master ]
   pull_request:
     branches: [ master ]
-
+  workflow_dispatch:
+  
 jobs:
   build:
 
@@ -13,7 +14,7 @@ jobs:
   
     steps:
     - uses: actions/checkout@v2
-    - name: configure
+    - name: Install Dependencies
       run: |
         sudo apt-get update
         sudo apt-get install libsdl2-dev
@@ -23,7 +24,23 @@ jobs:
         sudo apt-get install libsdl2-ttf-2.0-0
         sudo apt-get install libsdl2-net-2.0-0
         sudo apt-get install nasm
+        
     - name: make
       run: |
+        ls
         cd bin/linux
         make
+        ls
+        ls ../..
+        
+    - name: 'Tar files'
+      run: |
+        ls
+        tar -cvf bbcsdl.tar bbcsdl libstb.so
+
+    - name: 'Upload Artifact'
+      uses: actions/upload-artifact@v2
+      with:
+        name: bbcsdl
+        path: my_files.tar    
+      
