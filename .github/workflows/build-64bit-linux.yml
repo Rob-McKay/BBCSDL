@@ -27,20 +27,16 @@ jobs:
         
     - name: make
       run: |
-        ls
         cd bin/linux
         make
-        ls
-        ls ../..
         
     - name: 'Tar files'
       run: |
-        ls
         tar -cvf bbcsdl.tar bbcsdl libstb.so
 
     - name: 'Upload Artifact'
       uses: actions/upload-artifact@v2
       with:
         name: bbcsdl
-        path: my_files.tar    
+        path: bbcsdl.tar    
       
