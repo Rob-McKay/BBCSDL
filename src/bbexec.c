@@ -1,12 +1,12 @@
 /*****************************************************************\
 *       32-bit or 64-bit BBC BASIC Interpreter                    *
-*       (C) 2017-2020  R.T.Russell  http://www.rtrussell.co.uk/   *
+*       (C) 2017-2021  R.T.Russell  http://www.rtrussell.co.uk/   *
 *                                                                 *
 *       The name 'BBC BASIC' is the property of the British       *
 *       Broadcasting Corporation and used with their permission   *
 *                                                                 *
 *       bbexec.c: Variable assignment and statement execution     *
-*       Version 1.17a, 17-Oct-2020                                *
+*       Version 1.20a, 28-Feb-2021                                *
 \*****************************************************************/
 
 #include <string.h>
@@ -1840,7 +1840,7 @@ VAR xeq (void)
 					equals () ;
 					if (type == 136)
 						*(heapptr *)ptr = expri () - (size_t) zero ;
-					else if (type & 0x40)
+					else if ((type == 36) || (type & 0x40))
 						*(intptr_t *)ptr = expri () ;
 					else if (type == STYPE)
 						*(intptr_t*)(ptr + sizeof(void *)) = expri () ;
@@ -2296,6 +2296,7 @@ VAR xeq (void)
 				int n = expri () ;
 				oswrch (22) ;
 				oswrch (n) ;
+				vcount = 0 ;
 				}
 				break ;
 
@@ -2789,7 +2790,10 @@ VAR xeq (void)
 				esp -= 2 ;
 				*(long long *) esp = v.i.n ;
 
-				*--esp = (int) ((v.i.n >= 0) || (v.i.t > 0)) ;
+				if (v.i.t == 0)
+					*--esp = (int) (v.i.n >= 0) ;
+				else
+					*--esp = (int) (v.f >= 0.0) ;
 				esp -= STRIDE ;
 				*(void **)esp = esi ;
 				*--esp = FORCHK ;
@@ -3106,7 +3110,7 @@ VAR xeq (void)
 					error (26, NULL) ; // 'No such variable'
 				if (type1 != type2)
 					error (6, NULL) ; // 'Type mismatch'
-				if (type1 & BIT6)
+				if ((type1 == 36) || (type1 & BIT6))
 					n = sizeof(size_t) ; // whole array
 				else if (type1 == 128)
 				    {

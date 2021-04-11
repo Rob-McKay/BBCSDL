@@ -1,13 +1,13 @@
 /*****************************************************************\
 *       32-bit or 64-bit BBC BASIC for SDL 2.0                    *
-*       (C) 2017-2020  R.T.Russell  http://www.rtrussell.co.uk/   *
+*       (C) 2017-2021  R.T.Russell  http://www.rtrussell.co.uk/   *
 *                                                                 *
 *       The name 'BBC BASIC' is the property of the British       *
 *       Broadcasting Corporation and used with their permission   *
 *                                                                 *
 *       bbcmos.c  Machine Operating System emulation              *
 *       This module runs in the context of the interpreter thread *
-*       Version 1.17a, 19-Oct-2020                                *
+*       Version 1.20a, 02-Mar-2021                                *
 \*****************************************************************/
 
 #define _GNU_SOURCE
@@ -876,7 +876,7 @@ void quiet (void) ;
 void reset (void)
 {
 	vduq[10] = 0 ;	// Flush VDU queue
-	keyexp = 0 ;	// Cancel *KEY expansion
+	keyptr = NULL ;	// Cancel *KEY expansion
 	optval = 0 ;	// Cancel I/O redirection
 	reflag = 0 ;	// *REFRESH ON
  }
@@ -1654,7 +1654,10 @@ int oscall (int addr)
 
 		case 0xFFE3: // OSASCI
 			if (al != 0x0D)
+			    {
 				oswrch (al) ;
+				return 0 ;
+			    }
 
 		case 0xFFE7: // OSNEWL
 			crlf () ;
@@ -2159,8 +2162,7 @@ static void readb (SDL_RWops *context, unsigned char *buffer, FCB *pfcb)
 	int amount ;
 	if (context == NULL)
 		error (222, "Invalid channel") ;
-	if (pfcb->p != pfcb->o)
-		SDL_RWseek (context, (pfcb->p - pfcb->o) & 0xFF, RW_SEEK_CUR) ;
+	SDL_RWseek (context, (pfcb->p - pfcb->o) & 0xFF, RW_SEEK_CUR) ;
 	amount = SDL_RWread (context, buffer, 1, 256) ;
 	pfcb->p = 0 ;
 	pfcb->o = amount & 0xFF ;

@@ -1,12 +1,12 @@
 /*****************************************************************\
 *       32-bit or 64-bit BBC BASIC for SDL 2.0                    *
-*       (C) 2017-2020  R.T.Russell  http://www.rtrussell.co.uk/   *
+*       (C) 2017-2021  R.T.Russell  http://www.rtrussell.co.uk/   *
 *                                                                 *
 *       The name 'BBC BASIC' is the property of the British       *
 *       Broadcasting Corporation and used with their permission   *
 *                                                                 *
 *       bbcsdl.c Main program: Initialisation, Polling Loop       *
-*       Version 1.17a, 19-Oct-2020                                *
+*       Version 1.20a, 30-Jan-2021                                *
 \*****************************************************************/
 
 #include <stdlib.h>
@@ -124,7 +124,7 @@ void *userTOP = NULL ;
 const int bLowercase = 0 ;    // Dummy
 const char szVersion[] = "BBC BASIC for "PLATFORM" version "VERSION ;
 const char szNotice[] = "(C) Copyright R. T. Russell, "YEAR ;
-char szAutoRun[MAX_PATH] = "autorun.bbc" ;
+char szAutoRun[MAX_PATH + 1] = "autorun.bbc" ;
 char *szLoadDir ;
 char *szLibrary ;
 char *szUserDir ;
@@ -461,7 +461,7 @@ int main(int argc, char* argv[])
 {
 int i ;
 size_t immediate ;
-int fullscreen = 0, fixedsize = 0, hidden = 0 ;
+int fullscreen = 0, fixedsize = 0, hidden = 0, borderless = 0 ;
 SDL_RWops *ProgFile ;
 const SDL_version *TTFversion ;
 SDL_version SDLversion ;
@@ -563,6 +563,7 @@ for (i = 1; i < argc; i++)
 {
 	fixedsize |= (NULL != strstr (argv[i], "-fixedsize")) ;
 	fullscreen |= (NULL != strstr (argv[i], "-fullscreen")) ;
+	borderless |= (NULL != strstr (argv[i], "-borderless")) ;
 	hidden |= (NULL != strstr (argv[i], "-hidden")) ;
 }
 
@@ -576,6 +577,7 @@ window = SDL_CreateWindow("BBCSDL",  SDL_WINDOWPOS_CENTERED,  SDL_WINDOWPOS_CENT
 #endif
 				(fixedsize ? 0 : SDL_WINDOW_RESIZABLE) | 
 				(fullscreen ? SDL_WINDOW_FULLSCREEN_DESKTOP : 0) | 
+				(borderless ? SDL_WINDOW_BORDERLESS : 0) | 
 				(hidden ? SDL_WINDOW_HIDDEN : 0)) ;
 if (window == NULL)
 {
@@ -683,9 +685,12 @@ SDL_SetTextureBlendMode(buttexture, SDL_BLENDMODE_BLEND) ;
 #elif defined __APPLE__ || defined __EMSCRIPTEN__
 
 	while ((MaximumRAM > DEFAULT_RAM) &&
-				(NULL == (userRAM = mmap ((void *)0x10000000, MaximumRAM, 
-					PROT_EXEC | PROT_READ | PROT_WRITE, 
-					MAP_PRIVATE | MAP_ANON, -1, 0))))
+			((void*)-1 == (userRAM = mmap ((void *)0x10000000, MaximumRAM, 
+						PROT_EXEC | PROT_READ | PROT_WRITE, 
+						MAP_PRIVATE | MAP_ANON, -1, 0))) &&
+			((void*)-1 == (userRAM = mmap ((void *)0x10000000, MaximumRAM, 
+						PROT_READ | PROT_WRITE, 
+						MAP_PRIVATE | MAP_ANON, -1, 0))))
 		MaximumRAM /= 2 ;
 
 #else // __LINUX__ and __ANDROID__
@@ -823,7 +828,10 @@ if ((glTexParameteriBBC == NULL) || (glLogicOpBBC == NULL) || (glEnableBBC == NU
 #endif
 
 	if (argc >= 2)
-		strcpy (szAutoRun, argv[1]) ;
+	{
+		strncpy (szAutoRun, argv[1], 256) ;
+		szAutoRun[255] = '\0';
+	}
 	if ((argc == 1) || (*argv[1] == '-'))
 	{
 		char *q ;
