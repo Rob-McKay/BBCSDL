@@ -7,7 +7,7 @@
 *                                                                 *
 *       bbcmos.c  Machine Operating System emulation              *
 *       This module runs in the context of the interpreter thread *
-*       Version 1.20a, 02-Mar-2021                                *
+*       Version 1.25a, 21-Aug-2021                                *
 \*****************************************************************/
 
 #define _GNU_SOURCE
@@ -16,6 +16,7 @@
 #include <stdlib.h>
 #include <time.h>
 #include <math.h>
+#include <setjmp.h>
 #include "SDL2/SDL.h"
 #include "SDL_ttf.h"
 #include "bbcsdl.h"
@@ -44,13 +45,17 @@ void crlf (void) ;		// Output a newline
 unsigned int rnd (void) ;	// Return a pseudo-random number
 
 // Declared in bbccli.c:
-char *setup (char *, char *, char *, char, int *) ;
+char *setup (char *, char *, char *, char, unsigned char *) ;
 void oscli (char *) ;		// Execute an emulated OS command
 
 // Interpreter entry point:
 int basic (void *, void *, void *) ;
 
+// Global jump buffer:
+extern jmp_buf env ;
+
 // Forward references:
+void oswrch (unsigned char) ;
 unsigned char osbget (void*, int*) ;
 void osbput (void*, unsigned char) ;
 
@@ -1162,7 +1167,14 @@ heapptr xtrap (void)
 // Report a 'fatal' error:
 void faterr (const char *msg)
 {
-	SDL_ShowSimpleMessageBox (SDL_MESSAGEBOX_ERROR, szVersion, msg, hwndProg) ;
+	if (SDL_ShowSimpleMessageBox (SDL_MESSAGEBOX_ERROR, szVersion, msg, hwndProg))
+	    {
+		reset () ;
+		oswrch (22) ; oswrch (7) ;
+		text (msg) ;
+		crlf () ;
+		longjmp (env, 256) ;		
+	    }
 }
 
 // Wait a maximum period for a keypress, or test key asynchronously:
@@ -2355,10 +2367,8 @@ int entry (void *immediate)
 	int i ;
 	short *table ;
 
-	memset (&stavar[1], 0, (char *)datend - (char *)&stavar[1]) ;
-
 	accs = (char*) userRAM ;		// String accumulator
-	buff = (char*) accs + 0x10000 ;		// Temporary string buffer
+	buff = (char*) accs + ACCSLEN ;		// Temporary string buffer
 	path = (char*) buff + 0x100 ;		// File path
 	keystr = (char**) (path + 0x100) ;	// *KEY strings
 	keybdq = (char*) keystr + 0x100 ;	// Keyboard queue

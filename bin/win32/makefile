@@ -15,6 +15,15 @@ OBJ = bbmain.o bbexec.o bbeval.o bbcmos.o bbccli.o \
 
 all: bbcsdl.exe
 
+bbmain.i: bbmain.c BBC.h
+	$(CXX) -E $< > bbmain.i
+
+bbexec.i: bbexec.c BBC.h
+	$(CXX) -E $< > bbexec.i
+
+bbeval.i: bbeval.c BBC.h
+	$(CXX) -E $< > bbeval.i
+
 bbmain.o: bbmain.c BBC.h
 	$(CXX) -c -O2 $< -o $@
 
@@ -22,14 +31,14 @@ bbexec.o: bbexec.c BBC.h
 	$(CXX) -c -O2 $< -o $@
 
 bbeval.o: bbeval.c BBC.h
-	$(CXX) -c -O2 $< -o $@
+	$(CXX) -Wno-array-bounds -c -O2 $< -o $@
 
 # TODO: Need bbasmb_x86_32 assembler!!
 bbasmb.o: bbasmb_arm_32.c BBC.h
 	$(CXX) -c -Os $< -o $@
 
 bbcmos.o: bbcmos.c bbcsdl.h
-	$(CXX) -c $(SDL_INCLUDE) -msse2 -O2 $< -o $@
+	$(CXX) -Wno-array-bounds -c $(SDL_INCLUDE) -msse2 -O2 $< -o $@
 
 bbccli.o: bbccli.c bbcsdl.h
 	$(CXX) -c $(SDL_INCLUDE) -Os $< -o $@
@@ -53,7 +62,7 @@ flood.o: flood.c
 	$(CXX) -c $(SDL_INCLUDE) -O3 $< -o $@
 
 bbdata.o: ../../src/bbdata_x86_32.nas
-	nasm --prefix _ -f win32 -s ../../src/bbdata_x86_32.nas -o bbdata.o -l bbdata.lst
+	nasm --prefix _ -f win32 -s ../../src/bbdata_x86_32.nas -o bbdata.o
 
 bbcsdl.exe: $(OBJ)
 	$(CXX) $(OBJ) \

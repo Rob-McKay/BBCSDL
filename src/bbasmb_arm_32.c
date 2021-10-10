@@ -1,9 +1,9 @@
 /*****************************************************************\
 *       32-bit BBC BASIC Interpreter                              *
-*       (c) 2018-2020  R.T.Russell  http://www.rtrussell.co.uk/   *
+*       (c) 2018-2021  R.T.Russell  http://www.rtrussell.co.uk/   *
 *                                                                 *
 *       bbasmb.c: Simple ARM 4 assembler                          *
-*       Version 1.15a, 27-Aug-2020                                *
+*       Version 1.24a, 12-Jul-2021                                *
 \*****************************************************************/
 
 #include <stdlib.h>
@@ -287,12 +287,13 @@ static void poke (void *p, int n)
 	memcpy (d, p, n) ;
 }
 
-void *align (void)
+static void *align (void)
 {
 	while (stavar[16] & 3)
 	    {
 		stavar[16]++ ;
-		stavar[15]++ ;
+		if (liston & BIT6)
+			stavar[15]++ ;
 	    } ;
 	return PC ;
 }
@@ -351,7 +352,7 @@ void assemble (void)
 					do
 					    {
 						unsigned int i = *(unsigned int *)p ;
-#ifdef _WIN32
+#if (defined (_WIN32)) && (__GNUC__ < 9)
 						sprintf (accs, "%08I64X ", (long long) (size_t) oldpc) ;
 #else
 						sprintf (accs, "%08llX ", (long long) (size_t) oldpc) ;
@@ -396,7 +397,8 @@ void assemble (void)
 				    }
 				nxt () ;
 #ifdef __arm__
-				__builtin___clear_cache (oldpc, PC) ; 
+				if ((liston & BIT6) == 0)
+					__builtin___clear_cache (oldpc, PC) ; 
 #endif
 				oldpc = PC ;
 				oldesi = esi ;
@@ -585,6 +587,8 @@ void assemble (void)
 					case TEQ:
 					case TST:
 						instruction = (ccode << 28) | (opcodes[mnemonic] << 20) ;
+						if ((*esi == 's') || (*esi == 'S'))
+							esi++ ;
 						instruction |= reg () << 16 ;
 						comma () ;
 						instruction |= shifter_operand () ;

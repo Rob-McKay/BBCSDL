@@ -6,7 +6,7 @@
 *       Broadcasting Corporation and used with their permission   *
 *                                                                 *
 *       bbexec.c: Variable assignment and statement execution     *
-*       Version 1.21a, 10-Apr-2021                                *
+*       Version 1.25a, 21-Aug-2021                                *
 \*****************************************************************/
 
 #include <string.h>
@@ -21,7 +21,7 @@ signed char nxt (void) ;	// Skip spaces, handle line continuation
 void check (void) ;		// Check for running out of memory
 void error (int, const char*) ;	// Process an error
 void outchr (unsigned char) ;	// Output a character
-void text (char *) ;		// Output NUL-terminated string
+void text (const char *) ;	// Output NUL-terminated string
 unsigned short report (void) ;	// Build an error string in accs
 void crlf (void) ;		// Output a newline
 char *allocs (STR *, int) ;	// Reallocate a string
@@ -179,7 +179,7 @@ void storen (VAR v, void *ptr, unsigned char type)
 			n = v.i.n ;
 			if (v.i.n != n)
 				error (20, NULL) ; // 'Number too big'
-			*(int*)ptr = n ;
+			ISTORE(ptr, n) ;
 			break ;
 
 		case 5:
@@ -198,12 +198,12 @@ void storen (VAR v, void *ptr, unsigned char type)
 				error (20, NULL) ; // 'Number too big'
 			if (e <= 0)
 			    {
-				* (int*)ptr = 0 ;
+				ISTORE(ptr, 0) ;
 				* ((char *)ptr+4) = 0 ;
 			    }
 			else
 			    {
-				* (int *)ptr = l ;
+				ISTORE(ptr, l) ;
 				* ((char *)ptr+4) = e ;
 			    }
 			}
@@ -241,7 +241,7 @@ void storen (VAR v, void *ptr, unsigned char type)
 			break ;
 
 		case 36:
-			*(void **)ptr = (void *) (size_t) v.i.n ;
+			VSTORE(ptr, (void *) (size_t) v.i.n) ;
 			break ;
 
 		default:
@@ -271,12 +271,9 @@ void stores (VAR v, void *ptr, unsigned char type)
 			    {
 				// Source string is pointed to by the tmps descriptor so simply
 				// swap the descriptors rather than copying the string contents:
-				heapptr p = tmps.p ;
-				int l = tmps.l ;
-				tmps.p = ((STR *)ptr)->p ;
-				tmps.l = ((STR *)ptr)->l ;
-				((STR *)ptr)->p = p ;
-				((STR *)ptr)->l = l ;
+				STR swap = tmps ;
+				memcpy(&tmps, ptr, sizeof(STR)) ;
+				memcpy(ptr, &swap, sizeof(STR)) ;
 				break ;
 			    }
 			memmove (allocs ((STR *)ptr, v.s.l), v.s.p + zero, v.s.l) ;
@@ -540,12 +537,12 @@ static void undims (void *ebp, void *ebx)
 		char al = *((char *)ebp - 2) ;	// type character
 		if (al == '$')			// scalar string
 		    {
-			ebp = ebx + *(int *)ebp ;
+			ebp = ebx + ILOAD(ebp) ;
 			stores (v, ebp, 0x88) ;	// free string
 		    }
 		else if ((al == '(') && (*((char *)ebp - 3) == '$'))	// string array
 		    {
-			void *edi = ebx + *(int *)ebp ; // string pointer
+			void *edi = ebx + ILOAD(ebp) ; // string pointer
 			ebp += 4 ; // skip data offset
 			int eax = arrlen (&ebp) ;
 			while (eax--)
@@ -556,9 +553,9 @@ static void undims (void *ebp, void *ebx)
 		    }
 		else if (al == '{')		// sub-structure
 		    {
-			undims (*(void **)ebp, ebx + *(int *)(ebp + sizeof(void *))) ;
+			undims (VLOAD(ebp), ebx + ILOAD(ebp + sizeof(void *))) ;
 		    }
-		ebp = edx + *(int *)edx ; // follow relative link (GCC extension)
+		ebp = edx + ILOAD(edx) ; // follow relative link (GCC extension)
 		if (ebp == edx)
 			break ;
 	    }
@@ -581,7 +578,7 @@ static void undim (void)
 	size = (int) *esp++ ;
 	if (varptr != NULL)
 	    {
-		*(heapptr *)varptr = 1 ; // restore LOCAL marker
+		USTORE(varptr , 1) ; // restore LOCAL marker
 		if (type == STYPE) // scalar structure
 		    {
 			undims (desc, data) ;
@@ -600,7 +597,7 @@ static void undim (void)
 			int n = arrlen (&desc) ;
 			while (n--)
 			    {
-				undims (*(void **)desc, *(void **)(desc + sizeof(void *))) ;
+				undims (VLOAD(desc), VLOAD(desc + sizeof(void *))) ;
 				desc += 2 * sizeof(size_t) ;
 			    }				
 		    }
@@ -618,8 +615,8 @@ static void savloc (void *ptr, unsigned char type)
 	if (type == STYPE)
 	    {
 		esp -= STRIDE * 2 ;
-		*((void **)esp + 1) = *((void **)ptr + 1) ; // struct data ptr
-		*(void **)esp       = *(void **)ptr ; // struct format ptr
+		*((void **)esp + 1) = VLOAD(ptr + sizeof(void*)) ; // struct data ptr
+		*(void **)esp       = VLOAD(ptr) ; // struct format ptr
 	    }
 	else if (type < 128)
 	    {
@@ -631,8 +628,8 @@ static void savloc (void *ptr, unsigned char type)
 	else if (type == 136) 
 	    {
 		// can't use long long because of ARM alignment requirements
-		*(int *)--esp = *(int *)((char *)ptr + 4) ; // string length
-		*(int *)--esp = *(int *)ptr ; // string pointer
+		*(int *)--esp = ILOAD((char *)ptr + 4) ; // string length
+		*(int *)--esp = ILOAD(ptr) ; // string pointer
 	    }
 	else
 	    {
@@ -667,15 +664,15 @@ static void resloc (void)
 		    {
 			if (ptr != NULL)
 			    {
-				*(void **)ptr       = *(void **)esp ; // struct format ptr
-				*((void **)ptr + 1) = *((void **)esp + 1) ; // struct data ptr
+				VSTORE(ptr, *(void **)esp) ; // struct format ptr
+				VSTORE(ptr + sizeof(void*), *((void **)esp + 1)) ; // struct data ptr
 			    }
 			esp += STRIDE * 2 ;
 		    }
 		else if (type < 128)
 		    {
 			if (ptr != NULL)
-				storen (*(VAR *)esp, ptr, type) ;
+				storen (NLOAD(esp), ptr, type) ;
 			esp += 3 ;
 		    }
 		else if (type == 136)
@@ -687,8 +684,8 @@ static void resloc (void)
 			    {
 				stores (v, ptr, type) ; // free local string
 				// can't use long long because of ARM alignment requirements
-				*(int *)ptr = *(int *)esp++ ; // string pointer
-				*(int *)((char *)ptr + 4) = *(int *)esp++ ; // string length
+				ISTORE(ptr, *(int *)esp++) ; // string pointer
+				ISTORE((char *)ptr + 4, *(int *)esp++) ; // string length
 			    }
 			else
 				esp += 2 ;
@@ -717,18 +714,18 @@ static void unstack (int count)
 
 		if (type & BIT6)
 		    {
-			*(void **)ptr = *(void **)esp ; // array pointer
+			VSTORE(ptr, *(void **)esp) ; // array pointer
 			esp += STRIDE ;
 		    }
 		else if (type & BIT4)
 		    {
-			*(void **)ptr       = *(void **)esp ; // struct format ptr
-			*((void **)ptr + 1) = *((void **)esp + 1) ; // struct data ptr
+			VSTORE(ptr, *(void **)esp) ; // struct format ptr
+			VSTORE(ptr + sizeof(void*), *((void **)esp + 1)) ; // struct data ptr
 			esp += STRIDE * 2 ;
 		    }
 		else if (type < 128)
 		    {
-			storen (*(VAR *) esp, ptr, type) ; // numeric
+			storen (NLOAD(esp), ptr, type) ; // numeric
 			esp += 3 ;
 		    }
 		else
@@ -747,7 +744,7 @@ static void unstack (int count)
 static void unret (void)
 {
 	esp++ ; 
-	int count = *(int*)esp++ ;
+	int count = *(int *)esp++ ;
 	if (count == 0)
 		return ;
 	heapptr *edi = esp ;
@@ -765,13 +762,13 @@ static void unret (void)
 		if (srctype & BIT6)
 		    {
 			esp -= STRIDE ;
-			*(void **)esp = *(void **)srcptr ; // array pointer
+			*(void **)esp = VLOAD(srcptr) ; // array pointer
 		    }
 		else if (srctype & BIT4)
 		    {
 			esp -= STRIDE * 2 ;
-			*((void **)esp + 1) = *((void **)srcptr + 1) ; // struct data ptr
-			*(void **)esp       = *(void **)srcptr ; // struct format ptr
+			*((void **)esp + 1) = VLOAD(srcptr + sizeof(void*)) ; // struct data ptr
+			*(void **)esp       = VLOAD(srcptr) ; // struct format ptr
 		    }
 		else if (srctype < 128)
 		    {
@@ -829,7 +826,7 @@ static signed char* argue (signed char *ebx, heapptr *edi, int flag)
 			optr = getput (&otype) ;
 			if (otype & BIT6)
 			    {
-				if (*(int *)optr == 1)
+				if (ILOAD(optr) == 1)
 					error (14, NULL) ; // Don't allow a LOCAL array
 				otype = ATYPE ;
  			    }
@@ -842,11 +839,11 @@ static signed char* argue (signed char *ebx, heapptr *edi, int flag)
 
 			if (type == STYPE)
 			    {
-				if (*(int *)optr == 1)
+				if (ILOAD(optr) == 1)
 					error (56, NULL) ; // Don't allow a LOCAL structure
 				esp -= STRIDE * 2 ;
-				*((void **)esp + 1) = *((void **)optr + 1) ; // struct data ptr
-				*(void **)esp       = *(void **)optr ; // struct format ptr
+				*((void **)esp + 1) = VLOAD(optr + sizeof(void*)) ; // struct data ptr
+				*(void **)esp       = VLOAD(optr) ; // struct format ptr
 			    }
 			else if (type < 128)
 			    {
@@ -881,10 +878,10 @@ static signed char* argue (signed char *ebx, heapptr *edi, int flag)
 				if (type == STYPE)
 				    {
 					esp -= STRIDE ;
-					*(void **)esp = *((void **)optr + 1) ; // struct data ptr
+					*(void **)esp = VLOAD(optr + sizeof(void*)) ; // struct data ptr
 				    }
 				esp -= STRIDE ;
-				*(void **)esp = *(void **)optr ; // array pointer/struct fmt pointer
+				*(void **)esp = VLOAD(optr) ; // array pointer/struct fmt pointer
 			    }
 			else if (type < 128)
 			    {
@@ -925,7 +922,7 @@ static signed char* argue (signed char *ebx, heapptr *edi, int flag)
 	    {
 		edi++ ; // skip LOCCHK
 		unsigned char type = (unsigned char) *(int *)edi++ ;
-		heapptr *ebp = *(heapptr **)edi ;
+		void *ebp = *(void **)edi ;
 		edi += STRIDE ;
 		if (type == STYPE)
 			edi += STRIDE * 2 ;
@@ -935,10 +932,10 @@ static signed char* argue (signed char *ebx, heapptr *edi, int flag)
 		    {
 			heapptr sptr = *edi++ ; // string pointer
 			edi++ ; // skip string length
-			if (sptr != *ebp)
+			if (sptr != ULOAD(ebp))
 				error (31, NULL) ; // 'Incorrect arguments'
-			*ebp++ = 0 ; // zero string pointer
-			*ebp = 0 ; //  zero string length
+			USTORE(ebp, 0) ; // zero string pointer
+			USTORE(ebp + 4, 0) ; //  zero string length (GCC extension)
 		    }
 		else
 			edi += (((int) *edi + 3) >> 2) + 1 ;
@@ -962,14 +959,14 @@ static void fixup (void *edi, int ebx)
 		if (*((char *)edi - 1) == '{')
 		    {
 			edi++ ; // GCC extension: sizeof(void) = 1
-			void *tmp = *(void **)edi ;
+			void *tmp = VLOAD(edi) ;
 			if (tmp > edi)
 			    {
-				*(void **)edi = tmp + ebx ;
+				VSTORE(edi, tmp + ebx) ;
 				fixup (tmp, ebx) ; // nested structure
 			    }
 		    }
-		edi = edx + *(int *)edx ; // relative link
+		edi = edx + ILOAD(edx) ; // relative link
 		if (edi == edx)
 			break ;
 	    }
@@ -987,7 +984,7 @@ static int structure (void **pedi)
 		signed char al = nxt () ;
 		void *tmp ;
 		void *ebx = edi + 4 ;
-		*(int *)edi = 0 ;	// zero terminating link
+		ISTORE(edi, 0) ;	// zero terminating link
 
 		if (al == '}')
 		    {
@@ -1001,11 +998,11 @@ static int structure (void **pedi)
 				error (10, NULL) ; // 'Bad DIM statement'
 			if (type != STYPE)
 				error (6, NULL) ; // 'Type mismatch'
-			edi = *(void **)ptr ; // descriptor pointer
+			edi = VLOAD(ptr) ; // descriptor pointer
 			if (((edi > (void *)esp) && ((edi - zero) < himem)) || (edi < (void *)2)) 
 				error (10, NULL) ; // 'Bad DIM statement'
 			*pedi = edi ;
-			return ecx + *(int *)edi ; // add structure size
+			return ecx + ILOAD(edi) ; // add structure size
 		    }
 		if (!range1 (al))
 			error (16, NULL) ; // 'Syntax error'
@@ -1015,36 +1012,36 @@ static int structure (void **pedi)
 			int eax ;
 			void *ebp ;
 			void *edi = ebx + 2 * sizeof(void *) ; // GCC extension: sizeof(void) = 1
-			*(void **)ebx = edi ; // format pointer
-			*(void **)(ebx + sizeof (void *)) = (void *)(size_t)ecx ; // GCC extension
+			VSTORE(ebx, edi) ; // format pointer
+			VSTORE(ebx + sizeof(void*), (void *)(size_t)ecx) ; // GCC extension
 			ebp = edi ;
 			edi += 4 ;
 			eax = structure (&edi) ;
-			*(int *)ebp = eax ;
+			ISTORE(ebp, eax) ;
 			ecx += eax ;
 			if (edi < ebx)
 			    {
-				*(void **)ebx = edi ; 
+				VSTORE(ebx, edi) ; 
 				edi = ebx + 2 * sizeof(void *) ; // GCC extension: sizeof(void) = 1
 			    }
 			ebx = edi ;
 		    }
 		else
 		    {
-			*(int *)ebx = ecx ;	// store member offset
+			ISTORE(ebx, ecx) ;	// store member offset
 			ebx += 4 ;	// GCC extension: sizeof(void) = 1
 			if (*esi == '(') // array member ?
 			    {
 				unsigned char dims = 0 ;
 				int size = type & TMASK ;
-				int *desc = (int *)(ebx + 1) ;
+				void *desc = ebx + 1 ;
 				do
 				    {
 					esi++ ;
 					int n = expri () + 1 ;
 					if (n < 1)
 						error (10, NULL) ; // 'Bad DIM statement'
-					*desc++ = n ;
+					ISTORE(desc, n) ; desc += 4 ;
 					size *= n ;
 					dims++ ;
 				    }
@@ -1064,7 +1061,7 @@ static int structure (void **pedi)
 			break ;
 		if (al != ',')
 			error (16, NULL) ; // 'Syntax error'
-		*(int*)ebx = edi - ebx ; // relative link (signed)
+		ISTORE(ebx, edi - ebx) ; // relative link (signed)
 	    }
 	*pedi = edi ; // format pointer
 	return ecx ;
@@ -1090,7 +1087,7 @@ static void defscan (signed char *edx)
 			ptr = getdef (&found) ;
 			if (found == 0)
 				ptr = putdef (ptr) ;
-			*(void **) ptr = esi ;
+			VSTORE(ptr, esi) ;
 		    }
 		esi = oldesi ;
 		edx -= 3 ; // point to line-length byte
@@ -1113,18 +1110,18 @@ void procfn (signed char flag)
 	ptr = getdef (&found) ;
 	if (ptr == NULL)
 		error (16, NULL) ; // 'Syntax error'
-	if ((found == 0) || (*(int *)ptr == 0))
+	if ((found == 0) || (ILOAD(ptr) == 0))
 	    {
 		if (libase)
 			defscan (libase + (signed char *) zero) ;
 		defscan (vpage + (signed char *) zero) ;
 		esi = oldesi ;
 		ptr = getdef (&found) ;
-		if ((found == 0) || (*(int *)ptr == 0))
+		if ((found == 0) || (ILOAD(ptr) == 0))
 			error (29, NULL) ; // 'No such FN/PROC'
 	    }
 
-	ebx = *(void **)ptr ;	// Get FN/PROC pointer
+	ebx = VLOAD(ptr) ;	// Get FN/PROC pointer
 
 	esp -= STRIDE ; // Reserve space
 	resesp = esp ;
@@ -1216,7 +1213,7 @@ void newlin (void)
 	curlin = esi - (signed char *) zero ;
 	if (tracen)
 	    {
-		unsigned short lino = *((unsigned short *) esi - 1) ;
+		unsigned short lino = SLOAD(esi - 2) ;
 		if ((lino != 0) && (lino < tracen))
 		    {
 			outchr ('[') ;
@@ -1238,6 +1235,10 @@ VAR xeq (void)
 	void *tmpesi ;
 	while (1) // for each statement
 	    {
+#ifdef PICO
+		if((&al < (signed char *)libtop + 0x800) && (&al >= (signed char *)userRAM))
+			error(0, "Recursion too deep!");
+#endif
 	 	if (flags & (KILL + PAUSE + ALERT + ESCFLG))
 		    {
 			heapptr jump = xtrap () ;
@@ -1293,10 +1294,10 @@ VAR xeq (void)
 
 			case TQUIT:
 				{
-				int n = 1 ;
+				int n = 0 ;
 				if (!termq ())
 					n = expri () ;
-				error (-n, NULL) ;
+				error (~n, NULL) ;
 				}
 
 /************************************* REM *************************************/
@@ -1366,7 +1367,10 @@ VAR xeq (void)
 						esp++ ;
 						void *ebx = *(void **)esp ;
 						esp += STRIDE ;
-						*(void **)ebx = NULL ; // remove called module
+						VSTORE(ebx, NULL) ; // remove called module
+#ifdef PICO
+						libtop = ebx ;
+#endif
 					    }
 					else
 						error (38, NULL) ; // 'Not in a subroutine'
@@ -1416,7 +1420,7 @@ VAR xeq (void)
 						void *ptr = getput (&type) ;
 						savloc (ptr, type) ;
 						if (type & (BIT4 | BIT6))
-							*(void **)ptr = (void *) 1 ; // Flag LOCAL array/struct
+							VSTORE(ptr, (void *) 1) ; // Flag LOCAL array/struct
 						else if (type == 128)
 							*(char *)ptr = 0x0D ; // CR-term string
 						else if (type == 130)
@@ -1446,12 +1450,12 @@ VAR xeq (void)
 					esi = (signed char *) accs ;
 					ptr = getput (&type) ;
 					esi = oldesi ;
-					if (*(int *)ptr)
+					if (ILOAD(ptr))
 					    {
 						skip () ;
 						break ; // reentrant call, ignore
 					    }
-					*(int *)ptr = 1 ;
+					ISTORE(ptr, 1) ;
 					*--esp = 0 ;
 					*--esp = 0 ;
 					*--esp = 0 ;
@@ -1678,7 +1682,7 @@ VAR xeq (void)
 						if (type == 0)
 							error (26, NULL) ; // 'No such variable' 
 						*p++ = type ;
-						*(void **)p = ptr ;
+						VSTORE(p, ptr) ;
 						p += sizeof(void *) ; // GCC extension 
 						count += 1 ;
 					    } ;
@@ -1737,12 +1741,15 @@ VAR xeq (void)
  				size = getext (chan) ;
 				osshut (chan) ;
 				oshwm (edi + v.s.l + 5 + size, 0) ;
-				*(int *)edi = v.s.l + 5 ;
+				ISTORE(edi, v.s.l + 5) ;
 				memcpy (edi + 4, accs, v.s.l + 1) ;
 				osload (accs, edi + v.s.l + 5, size) ;
 				newtop = gettop (edi, NULL) ;
 				if (newtop == NULL) 
 					error (52, NULL) ; // 'Bad library'
+#ifdef PICO
+				libtop = newtop ;
+#endif
 				if (al == TINSTALL)
 				    {
 					defscan (libase + (signed char *) zero) ;
@@ -1750,7 +1757,7 @@ VAR xeq (void)
 				    }
 				else
 				    {
-					*(int *)newtop = 0xF8000005 ;
+					ISTORE(newtop, 0xF8000005) ;
 					*(newtop + 4) = 0x0D ;
 					check () ;
 					esp -= STRIDE ;
@@ -1838,11 +1845,11 @@ VAR xeq (void)
 					braket () ;
 					equals () ;
 					if (type == 136)
-						*(heapptr *)ptr = expri () - (size_t) zero ;
+						USTORE(ptr, expri () - (size_t) zero) ;
 					else if ((type == 36) || (type & 0x40))
-						*(intptr_t *)ptr = expri () ;
+						TSTORE(ptr, expri ()) ;
 					else if (type == STYPE)
-						*(intptr_t*)(ptr + sizeof(void *)) = expri () ;
+						TSTORE(ptr + sizeof(void*), expri ()) ;
 					else
 						error (6, NULL) ; // 'Type mismatch'
 				    }
@@ -1867,8 +1874,7 @@ VAR xeq (void)
 				{
 				equals () ;
 				void *n = (void *) (size_t) expri () ;
-				if ((n < progRAM) ||
-					((n + STACK_NEEDED) > (void *) esp))
+				if ((n + STACK_NEEDED) > (void *) esp)
 					error (8, NULL) ; // 'Address out of range'
 				vpage = n - zero ;
 				}
@@ -1880,9 +1886,8 @@ VAR xeq (void)
 				{
 				equals () ;
 				void *n = (void *) (size_t) expri () ;
-				if ((n < progRAM) || 
-					((n + STACK_NEEDED) > (void *) esp))
-						error (8, NULL) ; // 'Address out of range'
+				if ((n + STACK_NEEDED) > (void *) esp)
+					error (8, NULL) ; // 'Address out of range'
 				clear () ;
 				lomem = n - zero ;
 				pfree = n - zero ;
@@ -1904,6 +1909,9 @@ VAR xeq (void)
 				if ((libase != 0) && (himem > libase))
 				    {
 					libase = 0 ;
+#ifdef PICO
+					libtop = n ;
+#endif
 					proptr[0] = 0 ;
 					fnptr[0] = 0 ;
 				    }
@@ -2808,6 +2816,7 @@ VAR xeq (void)
 					void *ptr = NULL ;
 					unsigned char type ;
 					VAR v, L, s ;
+					long long tmpll ;
 					signed char al = *esi ;
 					int b ;
 
@@ -2863,13 +2872,13 @@ VAR xeq (void)
 					s.i.t = *(short *)(esp + 4 + STRIDE) ;
 					s.i.n = *(long long *)(esp + 2 + STRIDE) ;
 #if defined __GNUC__ && __GNUC__ < 5
-					if ((v.i.t == 0) && (s.i.t == 0) && ((((L.i.n = v.i.n + s.i.n) ^
+					if ((v.i.t == 0) && (s.i.t == 0) && ((((tmpll = v.i.n + s.i.n) ^
 						             v.i.n) >= 0) || ((int)(v.s.l ^ s.s.l) < 0)))
 #else
 					if ((v.i.t == 0) && (s.i.t == 0) &&
-					    (! __builtin_saddll_overflow (v.i.n, s.i.n, &L.i.n)))
+					    (! __builtin_saddll_overflow (v.i.n, s.i.n, &tmpll)))
 #endif
-						 v.i.n = L.i.n ;
+						 v.i.n = tmpll ;
 					else
 					    {
 						if (v.i.t == 0)
@@ -3477,7 +3486,7 @@ VAR xeq (void)
 			case TDIM:
 				while (1)
 				    {
-					heapptr *ebp ;
+					void *ebp ;
 					int ebx = 0 ; // data size
 					int ecx = 0 ; // dims count
 					char *edx ; // heap pointer
@@ -3486,7 +3495,7 @@ VAR xeq (void)
 
 					nxt () ;
 					oldesi = esi ;
-					ebp = (heapptr *)getdim (&type) ;
+					ebp = getdim (&type) ;
 					if (ebp == NULL)
 						error (10, NULL) ; // 'Bad DIM statement'
 					check () ;
@@ -3515,7 +3524,7 @@ VAR xeq (void)
 					    {
 						edx += 4 ; // room for structure size
 						ebx = structure ((void **)&edx) ; 
-						*(int *)(pfree + zero) = ebx ; // structure size
+						ISTORE(pfree + zero, ebx) ; // structure size
 					    }
 
 					// Build array descriptor above structure descriptor:
@@ -3532,7 +3541,7 @@ VAR xeq (void)
 						for (i = ecx-1; i >= 0; i--)
 						    {
 							int eax = *(int *)(esp + i) ;
-							*(int *)edi = eax ;
+							ISTORE(edi, eax) ;
 							edi += 4 ;
 							ebx *= eax ;
 							if (ebx < 0)
@@ -3615,7 +3624,7 @@ VAR xeq (void)
 
 					// -------- Normal or PRIVATE DIM (on heap) -----------
 
-					else if (*(int *)ebp == 0)
+					else if (ILOAD(ebp) == 0)
 					    {
 						char *edi = pfree + (char *) zero ;
 						if ((edx < edi) || (edx > (char *) esp))
@@ -3625,9 +3634,9 @@ VAR xeq (void)
 						    }
 
 						if (ecx == 0)
-							*(char **)ebp = edi ; // no array
+							CSTORE(ebp, edi) ; // no array
 						else
-							*(char **)ebp = edx ; // array
+							CSTORE(ebp, edx) ; // array
 
 						edx += ecx ; // add in array descriptor
 						if (type & 0x10)
@@ -3643,32 +3652,32 @@ VAR xeq (void)
 
 						if (type == (STYPE + 0x40)) // structure array ?
 						    {
-							heapptr *tmp = (heapptr *)(edx - ecx) ; 
+							char *tmp = edx - ecx ; 
 							int eax = arrlen ((void **)&tmp) ;
 							edx += (2 * sizeof(size_t)) * eax ; // 8 or 16
 							while (eax--)
 							    {
-								*(void **)tmp = edi ; // struct fmt
-								tmp += STRIDE ;
-								*(void **)tmp = edx ; // struct data
-								tmp += STRIDE ;
-								edx += *(int *)edi ;
+								VSTORE(tmp, edi) ; // struct fmt
+								tmp += sizeof(void*) ;
+								VSTORE(tmp, edx) ; // struct data
+								tmp += sizeof(void*) ;
+								edx += ILOAD(edi) ;
 							    }
-							ebx = edx - (char *)tmp ;
-							edx = (char *) tmp ;
+							ebx = edx - tmp ;
+							edx = tmp ;
 						    }
 
 						if (ebx)
 						    {
 							memset (edx, 0, ebx) ;
 							if (type == STYPE)
-								*(void**)(ebp + STRIDE) = edx ;
+								VSTORE(ebp + sizeof(void*), edx) ;
 						    }
 					    }
 
 					// --------------- LOCAL DIM (on stack) -----------------
 
-					else if (*(void **)ebp == (void *)1)
+					else if (VLOAD(ebp) == (void *)1)
 					    {
 						int n ;
 						char *edi = pfree + (char *) zero ;
@@ -3686,14 +3695,14 @@ VAR xeq (void)
 						esp -= n >> 2 ;	// make space on stack
 
 						if (ecx == 0)
-							*(char **)ebp = edi - eax ; // no array
+							CSTORE(ebp, edi - eax) ; // no array
 						else
-							*(char **)ebp = edi - ecx ; // array
+							CSTORE(ebp, edi - ecx) ; // array
 
 						if (eax)
 							fixup (pfree + zero, edi - eax - ecx - pfree - (char *) zero) ;
 						else if (ecx == 0)
-							*(char **)ebp = edx ; // tagged structure
+							CSTORE(ebp, edx) ; // tagged structure
 
 						memcpy (edi - eax - ecx, pfree + zero, eax + ecx) ; // copy descriptors
 
@@ -3702,24 +3711,26 @@ VAR xeq (void)
 
 						if (type == (STYPE + 0x40)) // structure array ?
 						    {
-							void **tmp = *(void ***)ebp ; 
+							char *tmp = VLOAD(ebp) ; 
 							int eax = arrlen ((void **)&tmp) ;
 							edi += (2 * sizeof(size_t)) * eax ; // 8 or 16
 							while (eax--)
 							    {
-								*tmp++ = edx ; // struct fmt
-								*tmp++ = edi ; // struct data
-								edi += *(int *)edx ;
+								VSTORE(tmp, edx) ; // struct fmt
+								tmp += sizeof(void*) ;
+								VSTORE(tmp, edi) ; // struct data
+								tmp += sizeof(void*) ;
+								edi += ILOAD(edx) ;
 							    }
-							ebx = edi - (char *)tmp ;
-							edi = (char *) tmp ;
+							ebx = edi - tmp ;
+							edi = tmp ;
 						    }
 
 						*--esp = n ;
 						esp -= STRIDE ;
 						*(void **)esp = edi ; // data
 						esp -= STRIDE ;
-						*(void **)esp = *(void **)ebp ;
+						*(void **)esp = VLOAD(ebp) ;
 						esp -= STRIDE ;
 						*(void **)esp = ebp ; // varptr
 						*--esp = (int)type ;
@@ -3729,7 +3740,7 @@ VAR xeq (void)
 						    {
 							memset (edi, 0, ebx) ;
 							if (type == STYPE)
-								*(void **)(ebp + STRIDE) = edi ;
+								VSTORE(ebp + sizeof(void*), edi) ;
 						    }
 					    }
 
@@ -3737,12 +3748,12 @@ VAR xeq (void)
 
 					else // compare descriptors to check same dimensions 
 					    {
-						char *edi = *(void **) ebp ; // old pointer
+						char *edi = VLOAD(ebp) ; // old pointer
 						if (edx < (pfree + (char *) zero))
 						    {
 							char *eax = edi ;
 							if (ecx)
-								eax = *(void **)(edi + ecx) ;
+								eax = VLOAD(edi + ecx) ;
 							if (eax != edx)
 								error (10, NULL) ; // 'Bad DIM'
 						    }
@@ -3911,20 +3922,20 @@ VAR xeq (void)
 						error (26, NULL) ; // 'No such variable'
 					if (srctype != type)
 						error (6, NULL) ;  // 'Type mismatch'
-					fmt = *(void **)ptr ;
-					srcfmt = *(void **)srcptr ;
+					fmt = VLOAD(ptr) ;
+					srcfmt = VLOAD(srcptr) ;
 					if ((fmt < (void *)2) || (srcfmt < (void *)2))
 						error (56, NULL) ; // 'Bad use of structure'
-					len = *(int *)fmt ;
-					srclen = *(int *)srcfmt ;
+					len = ILOAD(fmt) ;
+					srclen = ILOAD(srcfmt) ;
 					if (len != srclen)
 						error (6, NULL) ;  // 'Type mismatch'
-					memcpy (*(void **)(ptr + sizeof(void *)),
-						*(void **)(srcptr + sizeof(void *)), len) ;
+					memcpy (VLOAD(ptr + sizeof(void *)),
+						VLOAD(srcptr + sizeof(void *)), len) ;
 					break ;
 				    }
 
-				ptr = *(void **) ptr ;
+				ptr = VLOAD(ptr) ;
 				if (ptr < (void *)2)
 					error (14, NULL) ; // 'Bad use of array'
 
@@ -3964,7 +3975,7 @@ VAR xeq (void)
 					VAR v = {0} ;
 					while (ecx--)
 					    {
-						modifs (*(VAR *)ebp, ptr, type, op) ;
+						modifs (NLOAD(ebp), ptr, type, op) ;
 						stores (v, ebp, type) ;
 						ebp += 8 ; // GCC extension (void has size 1)
 						ptr += 8 ; // GCC extension (void has size 1)

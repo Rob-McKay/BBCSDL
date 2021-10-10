@@ -1,11 +1,10 @@
 # Get SDL 2.0 from the Raspbian repository:
+# sudo apt-get install libsdl2-dev
+# sudo apt-get install libsdl2-ttf-dev
+# sudo apt-get install libsdl2-net-dev
 # sudo apt-get install libsdl2-2.0-0
 # sudo apt-get install libsdl2-ttf-2.0-0
 # sudo apt-get install libsdl2-net-2.0-0
-
-# Enable the 'experimental' GL driver (important):
-# sudo raspi-config
-# Advanced Options... GL Driver... GL (Full KMS)... Ok... Finish
 
 SDL_LIB = -L/usr/lib/ -lSDL2 -lSDL2main -lSDL2_ttf -lSDL2_net -ldl -lm
 
@@ -26,13 +25,13 @@ bbexec.o: bbexec.c BBC.h
 	$(CXX) $(CXXFLAGS) -DARMHF -O2 $< -o $@
 
 bbeval.o: bbeval.c BBC.h
-	$(CXX) $(CXXFLAGS) -O2 $< -o $@
+	$(CXX) -Wno-array-bounds $(CXXFLAGS) -O2 $< -o $@
 
 bbasmb.o: bbasmb_arm_32.c BBC.h
 	$(CXX) $(CXXFLAGS) -Os $< -o $@
 
 bbcmos.o: bbcmos.c bbcsdl.h
-	$(CXX) $(CXXFLAGS) -mfpu=neon -O2 $< -o $@
+	$(CXX) -Wno-array-bounds $(CXXFLAGS) -mfpu=neon -O2 $< -o $@
 
 bbccli.o: bbccli.c bbcsdl.h
 	$(CXX) -Wno-unused-result $(CXXFLAGS) -Os $< -o $@

@@ -1,12 +1,12 @@
 /*****************************************************************\
 *       32-bit or 64-bit BBC BASIC Interpreter                    *
-*       (C) 2017-2020  R.T.Russell  http://www.rtrussell.co.uk/   *
+*       (C) 2017-2021  R.T.Russell  http://www.rtrussell.co.uk/   *
 *                                                                 *
 *       The name 'BBC BASIC' is the property of the British       *
 *       Broadcasting Corporation and used with their permission   *
 *                                                                 *
 *       bbeval.c: Expression evaluation, functions and arithmetic *
-*       Version 1.18a, 03-Nov-2020                                *
+*       Version 1.25a, 07-Oct-2021                                *
 \*****************************************************************/
 
 #define __USE_MINGW_ANSI_STDIO 1
@@ -46,9 +46,9 @@
 void check (void) ;		// Check for running out of memory
 int range0 (char) ;		// Test char for valid in a variable name
 signed char nxt (void) ;	// Skip spaces, handle line continuation
-void error (int, char*) ;	// Process an error
+void error (int, const char*) ;	// Process an error
 void outchr (unsigned char) ;	// Output a character
-void text (char *) ;		// Output NUL-terminated string
+void text (const char *) ;	// Output NUL-terminated string
 void crlf (void) ;		// Output a newline
 unsigned short report (void) ;	// Put error message in string accumulator
 char *moves (STR *, int) ;	// Move string into temporary buffer
@@ -97,11 +97,11 @@ void *sysadr (char *) ;		// Get the address of an API function
 extern jmp_buf env ;
 
 #if defined __arm__ || defined __aarch64__ || defined __EMSCRIPTEN__
-void setfpu(void) {}
+static void setfpu(void) {}
 static double xpower[9] = {1.0e1, 1.0e2, 1.0e4, 1.0e8, 1.0e16, 1.0e32, 1.0e64,
 			   1.0e128, 1.0e256} ;
 #else
-void setfpu(void) { unsigned int mode = 0x37F; asm ("fldcw %0" : : "m" (*&mode)); } 
+static void setfpu(void) { unsigned int mode = 0x37F; asm ("fldcw %0" : : "m" (*&mode)); } 
 static long double xpower[13] = {1.0e1L, 1.0e2L, 1.0e4L, 1.0e8L, 1.0e16L, 1.0e32L, 1.0e64L,
 				1.0e128L, 1.0e256L, 1.0e512L, 1.0e1024L, 1.0e2048L, 1.0e4096L} ;
 #endif
@@ -366,13 +366,13 @@ VAR loadn (void *ptr, unsigned char type)
 
 		case 4:
 			v.i.t = 0 ;
-			v.i.n = *(int*)ptr ;
+			v.i.n = ILOAD(ptr) ;
 			break ;
 
 		case 5:
 			{
 			int ecx = *((unsigned char*)ptr + 4) ;
-			int edx = *(int*)ptr ;
+			int edx = ILOAD(ptr) ;
 			int sign = (edx < 0) ;
 			if (ecx == 0)
 			    {
@@ -393,10 +393,10 @@ VAR loadn (void *ptr, unsigned char type)
 			break ;
 
 		case 8:
-			if (*(int *)((char *) ptr + 4) == 0)
+			if (ILOAD((char *) ptr + 4) == 0)
 			    {
 				v.i.t = 0 ;
-				v.i.n = *(int *)ptr ; // 64-bit variant
+				v.i.n = ILOAD(ptr) ; // 64-bit variant
 				break ;
 			    }
 			{
@@ -424,7 +424,7 @@ VAR loadn (void *ptr, unsigned char type)
 
 		case 36:
 			v.i.t = 0 ;
-			v.i.n = (intptr_t) *(void **)ptr ;
+			v.i.n = (intptr_t) VLOAD(ptr) ;
 			break ;
 
 		default:
@@ -469,8 +469,8 @@ VAR loads (void *ptr, unsigned char type)
 			break ;
 
 		case 136:
-			v.s.p = *(heapptr*) ptr ;
-			v.s.l = *((int *) ptr + 1) ;
+			v.s.p = ULOAD(ptr) ;
+			v.s.l = ILOAD(ptr + 4) ;
 			break ;
 
 		default:
@@ -702,6 +702,11 @@ VAR math (VAR x, signed char op, VAR y)
 		case TEOR:
 			fix2(&x, &y) ;
 			x.i.n ^= y.i.n ;
+			return x ;
+
+		case TSUM:
+			fix2(&x, &y) ;
+			x.i.n += y.i.n ;
 			return x ;
 
 		case '<':
@@ -957,12 +962,12 @@ static int dimfunc (void)
 		error (6, NULL) ; // 'Type mismatch'
 	if ((type & BIT6) == 0)
 	    {
-		ptr = *(void **)ptr ; // Structure format ptr
+		ptr = VLOAD(ptr) ; // Structure format ptr
 		if (ptr < (void *)2)
 			error (56, NULL) ; // 'Bad use of structure'
-		return *(int *)ptr ;
+		return ILOAD(ptr) ;
 	    }
-	ptr = *(void **)ptr ;
+	ptr = VLOAD(ptr) ;
 	if (ptr < (void *)2)
 		error (14, NULL) ; // 'Bad use of array'
 	d = *(unsigned char *)ptr ;
@@ -972,7 +977,7 @@ static int dimfunc (void)
 	n = expri () - 1 ;
 	if ((n < 0) || (n >= d))
 		error (15, NULL) ; // 'Bad subscript'
-	return *((int *) (ptr + 1) + n) - 1 ;
+	return ILOAD(ptr + 1 + n * 4) - 1 ;
 }
 
 VAR item (void)
@@ -1100,11 +1105,11 @@ VAR item (void)
 				braket () ;
 				v.i.t = 0 ;
 				if (type == 136)
-					v.i.n = *(heapptr *)ptr + (size_t) zero ;
+					v.i.n = ULOAD(ptr) + (size_t) zero ;
 				else if ((type == 36) || (type & 0x40))
-					v.i.n = *(intptr_t *)ptr ;
+					v.i.n = TLOAD(ptr) ;
 				else if (type == STYPE)
-					v.i.n = *(intptr_t *)(ptr + sizeof (void *)) ;
+					v.i.n = TLOAD(ptr + sizeof (void *)) ;
 				else
 					error (6, NULL) ; // 'Type mismatch'
 			    }
@@ -1319,7 +1324,7 @@ VAR item (void)
 				y = expri () ;
 				braket () ;
 				c = vgetc (x, y) ;
-				*(int *)accs = c ;
+				ISTORE(accs, c) ;
 				v.s.t = -1 ;
 				v.s.p = accs - (char *) zero ;
 				if (c < 0)
@@ -1574,7 +1579,7 @@ VAR item (void)
 				error (26, NULL) ; // 'No such variable'
 			if ((type >= 128) || (type < 64))
 				error (6, NULL) ; // 'Type mismatch'
-			ptr = *(void **)ptr ;
+			ptr = VLOAD(ptr) ;
 			count = arrlen (&ptr) ;
 			v.i.t = 0 ;
 			v.i.n = 0 ;
@@ -1610,7 +1615,7 @@ VAR item (void)
 				error (16, NULL) ; // 'Syntax error'
 			if ((type & 64) == 0)
 				error (6, NULL) ; // 'Type mismatch'
-			ptr = *(void **)ptr ;
+			ptr = VLOAD(ptr) ;
 			count = arrlen (&ptr) ;
 			if (type < 128)
 			    {
@@ -2183,7 +2188,7 @@ VAR item (void)
 			if (type & BIT4)
 			    {
 				v.i.t = 0 ;
-				v.i.n = (intptr_t)*(void **)(ptr + sizeof(void *)) ; // GCC extension: sizeof(void) = 1
+				v.i.n = (intptr_t) VLOAD(ptr + sizeof(void *)) ; // GCC extension: sizeof(void) = 1
 				return v ;
 			    }
 			if (type < 128)
@@ -2215,7 +2220,7 @@ VAR item (void)
 
 static signed char relop (void)
 {
-	unsigned char al, op = nxt () ;
+	unsigned char al, op = *esi ;
 	if ((op != '<') && (op != '=') && (op != '>'))
 		return 0 ;
 	esi++ ;
@@ -2249,11 +2254,11 @@ static signed char relop (void)
 static VAR expr5 (void)
 {
 	VAR x = item () ;
+	signed char op = nxt () ;
 	if (x.s.t == -1)
 		return x ; // string
 	while (1) 
 	    {
-		signed char op = nxt () ;
 		if (op == '^')
 		    {
 			esi++ ;
@@ -2264,6 +2269,7 @@ static VAR expr5 (void)
 		    }
 		else
 			break ;
+		op = nxt () ;
 	    }
 	return x;
 }
@@ -2276,7 +2282,7 @@ static VAR expr4 (void)
 		return x ; // string
 	while (1) 
 	    {
-		signed char op = nxt () ;
+		signed char op = *esi ;
 		if ((op == '*') || (op == '/') || (op == TMOD) || (op == TDIV))
 		    {
 			esi++ ;
@@ -2291,7 +2297,7 @@ static VAR expr4 (void)
 	return x;
 }
 
-// Level 3: +, -:
+// Level 3: +, -, SUM:
 static VAR expr3 (void)
 {
 	VAR x = expr4 () ;
@@ -2299,7 +2305,7 @@ static VAR expr3 (void)
 	    {
 		while (1)
 		    {
-			signed char op = nxt () ;
+			signed char op = *esi ;
 			if (op == '+') // concatenate strings
 			    {
 				char *tmp ;
@@ -2322,8 +2328,8 @@ static VAR expr3 (void)
 	    }
 	while (1) 
 	    {
-		signed char op = nxt () ;
-		if ((op == '+') || (op == '-'))
+		signed char op = *esi ;
+		if ((op == '+') || (op == '-') || (op == TSUM))
 		    {
 			esi++ ;
 			VAR y = expr4 () ;
@@ -2341,9 +2347,8 @@ static VAR expr3 (void)
 // (these operators do not chain)
 static VAR expr2 (void)
 {
-	signed char op ;
 	VAR x = expr3 () ;
-	op = relop () ;
+	signed char op = relop () ;
 	if (op == 0)
 		return x ;
 	if (x.s.t == -1)
@@ -2408,7 +2413,7 @@ static VAR expr1 (void)
 		return x ; // string
 	while (1)
 	    {
-		signed char op = nxt () ;
+		signed char op = *esi ;
 		if (op == TAND)
 		    {
 			esi++ ;
@@ -2431,7 +2436,7 @@ VAR expr (void)
 		return x ; // string
 	while (1) 
 	    {
-		signed char op = nxt () ;
+		signed char op = *esi ;
 		if ((op == TOR) || (op == TEOR))
 		    {
 			esi++ ;
@@ -2490,7 +2495,7 @@ int expra (void *ebp, int ecx, unsigned char type)
 			    {
 				if (ptr < (void *)2)
 					error (14, NULL) ; // 'Bad use of array'
-				ptr = *(void **)ptr ;
+				ptr = VLOAD(ptr) ;
 
 				if (nxt () == '.') // dot product
 					break ;
@@ -2511,7 +2516,7 @@ int expra (void *ebp, int ecx, unsigned char type)
 				    {
 					for (i = 0; i < ecx; i++)
 					    {
-						modifs (*(VAR*)ptr, ebp, type & ~BIT6, op) ;
+						modifs (NLOAD(ptr), ebp, type & ~BIT6, op) ;
 						ebp += 8 ; // GCC extension (void has size 1)
 						ptr += 8 ; // GCC extension (void has size 1)
 					    }
@@ -2548,6 +2553,7 @@ int expra (void *ebp, int ecx, unsigned char type)
 					    {
 						modify (v, ebp, type & ~BIT6, op) ;
 						ebp += type & TMASK ; // GCC extension
+						if (nxt () == ',') break ;
 					    }
 				    }
 				else // string non-array
@@ -2560,6 +2566,7 @@ int expra (void *ebp, int ecx, unsigned char type)
 					    {
 						modifs (v, ebp, type & ~BIT6, op) ;
 						ebp += 8 ; // GCC extension
+						if (nxt () == ',') break ;
 					    }
 					esp = savesp ;
 				    }
@@ -2604,7 +2611,7 @@ int expra (void *ebp, int ecx, unsigned char type)
 			error (6, NULL) ; // 'Type mismatch'
 		if (rhs < (void *)2)
 			error (14, NULL) ; // 'Bad use of array'
-		rhs = *(void **)rhs ;
+		rhs = VLOAD(rhs) ;
 
 		dimsl = *(unsigned char *)ptr ;
 		dimsr = *(unsigned char *)rhs ;
@@ -2613,27 +2620,27 @@ int expra (void *ebp, int ecx, unsigned char type)
 
 		if (dimsl == 2)
 		    {
-			rowsl = *(int *)(ptr + 1) ; // GCC extension: sizeof(void) = 1
-			colsl = *(int *)(ptr + 5) ; // GCC extension: sizeof(void) = 1
+			rowsl = ILOAD(ptr + 1) ; // GCC extension: sizeof(void) = 1
+			colsl = ILOAD(ptr + 5) ; // GCC extension: sizeof(void) = 1
 			ptr += 9 ;
 		    }
 		else
 		    {
 			rowsl = 1 ;
-			colsl = *(int *)(ptr + 1) ;
+			colsl = ILOAD(ptr + 1) ;
 			ptr += 5 ;
 		    }
 
 		if (dimsr == 2)
 		    {
-			rowsr = *(int *)(rhs + 1) ; // GCC extension: sizeof(void) = 1
-			colsr = *(int *)(rhs + 5) ; // GCC extension: sizeof(void) = 1
+			rowsr = ILOAD(rhs + 1) ; // GCC extension: sizeof(void) = 1
+			colsr = ILOAD(rhs + 5) ; // GCC extension: sizeof(void) = 1
 			rhs += 9 ;
 		    }
 		else
 		    {
 			colsr = 1 ;
-			rowsr = *(int *)(rhs + 1) ;
+			rowsr = ILOAD(rhs + 1) ;
 			rhs += 5 ;
 		    }
 

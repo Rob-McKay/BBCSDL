@@ -1,16 +1,16 @@
 /*****************************************************************\
 *       BBC BASIC for SDL 2.0 (ARM_64)                            *
-*       Copyright (c) R. T. Russell, 2000-2020                    *
+*       Copyright (c) R. T. Russell, 2000-2021                    *
 *                                                                 *
 *       BBCDAT.S RAM data definitions                             *
-*       Version 1.15a, 27-Aug-2020                                *
+*       Version 1.24a, 29-Jul-2021                                *
 \*****************************************************************/
 
 .equ	MAX_PORTS,4
 .equ	MAX_FILES,8
 .equ	SOUNDQL,20
 
-.global	_stavar
+.global _stavar
 .global _lc
 .global _oc
 .global _pc
@@ -267,7 +267,7 @@ _envels:.long	0		/* Pointer to ENVELOPEs */
 	.long	0		/* 64-bit pointer */
 _eventq:.long	0		/* Pointer to event queue */
 	.long	0		/* 64-bit pointer */
-_hrect:	.long	0		/* Pointer to clipping rect */
+_hrect:	.long	0		/* Pointer to clip rect (part of @vdu{}) */
 	.long	0		/* 64-bit pointer */
 
 /* Text/graphics metrics (pointed to by @vdu%) */
@@ -362,32 +362,32 @@ _sysvar:.long	link1 - _sysvar
 .asciz	"wparam%"
 _wParam:.long	0		/* Saved wParam for ON xxxx interrupt */
 
-link1:	.long	link3 - link1
+link3:	.long	link4 - link3
 	.asciz	"lparam%"
 _lParam:.long	0		/* Saved lParam for ON xxxx interrupt */
 
 	.byte	0		/* Padding */
-link3:	.long	link4 - link3
+link23:	.long	link24 - link23
 	.asciz	"ispal%"
 _bPaletted: .long	0	/* Paletted display flag (BOOL) */
 
 	.fill	7,1,0		/* Padding */
-link4:	.long	link5 - link4
+link1:	.long	link3 - link1
 	.asciz	"memhdc%%"/* n.b. aliased to @memhdc% */
 _memhdc:.quad	0		/* Shadow screen device context */
 
 	.fill	7,1,0		/* Padding */
-link5:	.long	link6 - link5
+link9:	.long	link10 - link9
 	.asciz	"msg%"
 _iMsg:	.long	0		/* Saved iMsg for ON xxxx interrupt */
 
 	.byte	0		/* Padding */
-link6:	.long	link7 - link6
+link4:	.long	link5 - link4
 	.asciz	"hwnd%%"	/* n.b. aliased to @hwnd% */
 _hwndProg: .quad	0	/* Handle for program window */
 
 	.fill	5,1,0		/* Padding */
-link11:	.long	link12 - link11
+link12:	.long	link14 - link12
 	.asciz	"flags%"
 _tempo:	.byte	0		/* *TEMPO value */
 _sysflg:.byte	0		/* *SYS flags */
@@ -395,12 +395,12 @@ _reflag:.byte	0		/* *REFRESH flags */
 _flags:	.byte	0		/* Boolean flags (byte) */
 
 	.fill	7,1,0		/* Padding */
-link25:	.long	link26 - link25
+link16:	.long	link17 - link16
 	.asciz	"chrmap%%"	/* n.b. aliased to @chrmap% */
 _chrmap:.quad	0
 
 	.fill	5,1,0		/* Padding */
-link9:	.long	link10 - link9
+link5:	.long	link6 - link5
 	.asciz	"hpal%%"
 	.quad	_palette	/* Colour palette */
 
@@ -415,17 +415,17 @@ _link00:.long	0		/* End of list */
 	.quad	fnarr		/* Pointer to function array */
 
 	.short	0		/* Padding */
-link23:	.long	link25 - link23
+link11:	.long	link12 - link11
 	.asciz	"platform%"
 _platform: .long 0		/* SDL version & OS */
 
 	.long	0		/* Padding */
-link7:	.long	link8 - link7
+link6:	.long	link7 - link6
 	.asciz	"ox%"	
 _offsetx:.long	0		/* x-offset memhdc->hwnd */
 
 	.long	0		/* Padding */
-link8:	.long	link9 - link8
+link7:	.long	link8 - link7
 	.asciz	"oy%"	 
 _offsety:.long	0		/* y-offset memhdc->hwnd */
 
@@ -442,7 +442,7 @@ _libadr:.long	0		/* Library directory address */
 _liblen:.long	0		/* Library directory length */
 
 	.fill	6,1,00		/* Padding */
-link26:	.long	link27 - link26
+link24:	.long	link25 - link24
 	.asciz	"panx%"
 _panx:	.long	0		/* Horizontal pan */
 
@@ -459,7 +459,7 @@ _usradr:.long	0		/* User directory address */
 _usrlen:.long	0		/* User directory length */
 
 	.fill	6,1,00		/* Padding */
-link27:	.long	link28 - link27
+link25:	.long	link26 - link25
 	.asciz	"pany%"
 _pany:	.long	0		/* Vertical pan */
 
@@ -470,45 +470,45 @@ _tmpadr:.long	0		/* Temp directory address */
 _tmplen:.long	0		/* Temp directory length */
 
 	.fill	7,1,00		/* Padding */
-link28:	.long	link29 - link28
+link22:	.long	link23 - link22
 	.asciz	"vdu{"
 	.quad	vdufmt		/* Structure format address */
-	.quad	_vduvar		/* Structure data address */
+	.quad	_hrect		/* Structure data address */
 
 	.fill	6,1,00		/* Padding */
-link14:	.long	link17 - link14
+link14:	.long	link15 - link14
 	.asciz	"zoom%"
 _zoom:	.long	0
 
 	.fill	7,1,00		/* Padding */
-link12:	.long	link14 - link12
+link8:	.long	link9 - link8
 	.asciz	"hfile%%("
 	.quad	_farray		/* Pointer to file handles array */
 
 	.fill	5,1,00		/* Padding */
-link29:	.long	link30 - link29
+link26:	.long	link27 - link26
 	.asciz	"brkpt%"
 _breakpt:.long	0		/* Breakpoint (bottom of range) */
 
 	.fill	3,1,00		/* Padding */
-link22:	.long	link23 - link22
+link15:	.long	link16 - link15
 	.asciz	"hwo%"
 _hwo:	.long	0		/* Handle for wave output */
 
 	.byte	0		/* Padding */
-link30:	.long	link31 - link30
+link27:	.long	link28 - link27
 	.asciz	"brkhi%"
 _breakhi:.long	0		/* Breakpoint (top of range) */
 
 	.short	0		/* Padding */
-link31:	.long	link32 - link31
+link28:	.long	link29 - link28
 	.asciz	"size{"
 	.quad	ptfmt
 	.quad	_sizex
 
 	.short	0		/* Padding */
 	.long	0
-link32:	.long	_link00 - link32
+link29:	.long	_link00 - link29
 	.asciz	"char{"
 	.quad	ptfmt
 	.quad	_charx
@@ -519,88 +519,88 @@ link32:	.long	_link00 - link32
 
 	.byte	0		/* Padding */
 	.long	0
-vdufmt:	.long	_sndqw-_vduvar	/* Total length (bytes) */
+vdufmt:	.long	_sndqw-_hrect	/* Total length (bytes) */
 vlnk00:	.long	vlnk01 - vlnk00	/* Link to next */
 	.asciz	"o{"		/* Member name */
 	.quad	ptfmt
-	.quad	_origx-_vduvar	/* Data offset */
+	.quad	_origx-_hrect	/* Data offset */
 
 	.byte	0		/* Padding */
 vlnk01:	.long	vlnk02 - vlnk01
 	.asciz	"l{"		/* Member name */
 	.quad	ptfmt
-	.quad	_lastx-_vduvar	/* Data offset */
+	.quad	_lastx-_hrect	/* Data offset */
 
 	.byte	0		/* Padding */
 vlnk02:	.long	vlnk03 - vlnk02
 	.asciz	"p{"		/* Member name */
 	.quad	ptfmt
-	.quad	_prevx-_vduvar	/* Data offset */
+	.quad	_prevx-_hrect	/* Data offset */
 
 vlnk03:	.long	vlnk04 - vlnk03
 	.asciz	"tl%"		/* Member name */
-	.long	_textwl-_vduvar	/* Data offset */
+	.long	_textwl-_hrect	/* Data offset */
 
 	.long	0		/* Padding */
 vlnk04:	.long	vlnk05 - vlnk04
 	.asciz	"tr%"		/* Member name */
-	.long	_textwr-_vduvar	/* Data offset */
+	.long	_textwr-_hrect	/* Data offset */
 
 	.long	0		/* Padding */
 vlnk05:	.long	vlnk06 - vlnk05
 	.asciz	"tt%"		/* Member name */
-	.long	_textwt-_vduvar	/* Data offset */
+	.long	_textwt-_hrect	/* Data offset */
 
 	.long	0		/* Padding */
 vlnk06:	.long	vlnk07 - vlnk06
 	.asciz	"tb%"		/* Member name */
-	.long	_textwb-_vduvar	/* Data offset */
+	.long	_textwb-_hrect	/* Data offset */
 
 	.fill	5,1,00		/* Padding */
 vlnk07:	.long	vlnk08 - vlnk07
 	.asciz	"d{"		/* Member name */
 	.quad	ptfmt
-	.quad	_pixelx-_vduvar	/* Data offset */
+	.quad	_pixelx-_hrect	/* Data offset */
 
 	.byte	0		/* Padding */
 vlnk08:	.long	vlnk09 - vlnk08
 	.asciz	"c{"		/* Member name */
 	.quad	ptfmt
-	.quad	_textx-_vduvar	/* Data offset */
+	.quad	_textx-_hrect	/* Data offset */
 
 	.fill	7,1,00		/* Padding */
 vlnk09:	.long	vlnk10 - vlnk09
 	.asciz	"hf%%"		/* Member name */
-	.long	_hfont-_vduvar	/* Data offset */
+	.long	_hfont-_hrect	/* Data offset */
 
 	.fill	3,1,00		/* Padding */
 vlnk10:	.long	vlnk11 - vlnk10
 	.asciz	"hr%%"		/* Member name */
-	.long	_hrect-_vduvar	/* Data offset */
+	.long	_hrect-_hrect	/* Data offset */
 
 	.fill	5,1,00		/* Padding */
 vlnk11:	.long	vlnk12 - vlnk11
 	.asciz	"g{"		/* Member name */
 	.quad	b4fmt
-	.quad	_forgnd-_vduvar	/* Data offset */
+	.quad	_forgnd-_hrect	/* Data offset */
 
 	.byte	0		/* Padding */
 vlnk12:	.long	vlnk13 - vlnk12
 	.asciz	"t{"		/* Member name */
 	.quad	b4fmt
-	.quad	_cursa-_vduvar	/* Data offset */
+	.quad	_cursa-_hrect	/* Data offset */
 
 	.byte	0		/* Padding */
 vlnk13:	.long	vlnk14 - vlnk13
 	.asciz	"m{"		/* Member name */
 	.quad	b4fmt
-	.quad	_modeno-_vduvar	/* Data offset */
+	.quad	_modeno-_hrect	/* Data offset */
 
 	.byte	0		/* Padding */
 vlnk14:	.long	0
 	.asciz	"w{"		/* Member name */
 	.quad	b4fmt
-	.quad	_cursx-_vduvar	/* Data offset */
+	.quad	_cursx-_hrect	/* Data offset */
 
 /* Structure {x%,y%} */
 
@@ -655,6 +655,8 @@ fnarr0:	.quad	_loadn		/* Load numeric  */
 	.quad	_gfxPrimitivesGetFont
 	.quad	_gfxPrimitivesSetFont
 fnarrt:
+
+	.text
 
 _fvtab:	.byte	1		/* &19 v&  Unsigned byte (8 bits) */
 	.byte	4		/* &1A v%  Signed dword (32 bits) */
