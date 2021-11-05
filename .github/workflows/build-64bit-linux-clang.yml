@@ -20,13 +20,13 @@ jobs:
         wget -O - https://apt.llvm.org/llvm-snapshot.gpg.key|sudo apt-key add -
         echo "deb http://apt.llvm.org/focal/ llvm-toolchain-focal-${{env.CLANG_VER}} main" | sudo tee -a /etc/apt/sources.list
         sudo apt-get update
-        sudo apt-get install libsdl2-dev libsdl2-ttf-dev libsdl2-net-dev libsdl2-2.0-0 libsdl2-ttf-2.0-0 libsdl2-net-2.0-0 nasm clang-${{env.CLANG_VER}} clang-tools-${{env.CLANG_VER}} clang-tidy-${{env.CLANG_VER}} 
+        sudo apt-get install nasm clang-${{env.CLANG_VER}} clang-tools-${{env.CLANG_VER}} clang-tidy-${{env.CLANG_VER}} 
         
     - name: make
       run: |
-        cd bin/linux
+        cd console/linux
         sed '/^.*CXX .*$/d' makefile >makefile.clang
-        export CXX="clang-${{env.CLANG_VER}} -Wall -Wextra -Wpedantic -Wformat=2 -Wpadded -std=c11 -Wstrict-prototypes -Wold-style-definition -I ../../include -Dasm=__asm -Dintptr_t=__intptr_t"
+        export CXX="clang-${{env.CLANG_VER}} -Wall -Wextra -Wpedantic -Wformat=2 -Wpadded -std=c11 -Wstrict-prototypes -Wold-style-definition -I ../../include -I ../../../BBCSDL/include -Dasm=__asm -Dintptr_t=__intptr_t"
         make --file=makefile.clang
 
     - name: Copy readme etc
