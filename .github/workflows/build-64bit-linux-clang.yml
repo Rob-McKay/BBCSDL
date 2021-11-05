@@ -32,7 +32,7 @@ jobs:
     - name: 'Tar files'
       run: |
         ls -la
-        tar -czf bbcbasic-console.tgz bbcbasic lib examples licence.txt
+        tar -czf bbcbasic-console.tgz bbcbasic lib examples licence.txt tests
 
     - name: 'Upload Artifact'
       uses: actions/upload-artifact@v2
@@ -40,3 +40,7 @@ jobs:
         name: bbcbasic-console
         path: bbcbasic-console.tgz    
       
+    - name: 'Run Tests'
+      run: |
+        echo QUIT | ./bbcbasic tests/ALLTESTS.bbc
+        
