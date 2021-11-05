@@ -1,4 +1,4 @@
-name: Build BBCSDL linux 64 bit clang
+name: Build BBC Console linux 64 bit clang
 
 on:
   push:
@@ -29,18 +29,13 @@ jobs:
         export CXX="clang-${{env.CLANG_VER}} -Wall -Wextra -Wpedantic -Wformat=2 -Wpadded -std=c11 -Wstrict-prototypes -Wold-style-definition -I ../../include -I ../../../BBCSDL/include -Dasm=__asm -Dintptr_t=__intptr_t"
         make --file=makefile.clang
 
-    - name: Copy readme etc
-      run: |
-        cp bin/linux/install64.txt .
-        
-              
     - name: 'Tar files'
       run: |
-        tar -czf bbcsdl.tgz bbcsdl libstb.so install64.txt lib bbcsdl.bbc examples licence.txt
+        tar -czf bbcbasic-console.tgz bbcbasic lib examples licence.txt
 
     - name: 'Upload Artifact'
       uses: actions/upload-artifact@v2
       with:
-        name: bbcsdl
-        path: bbcsdl.tgz    
+        name: bbcbasic-console
+        path: bbcbasic-console.tgz    
       
