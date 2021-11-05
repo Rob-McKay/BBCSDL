@@ -1,0 +1,46 @@
+name: Build BBCSDL linux 64 bit clang
+
+on:
+  push:
+    branches: [ master ]
+  pull_request:
+    branches: [ master ]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    env:
+      CLANG_VER: 13
+
+    steps:
+    - uses: actions/checkout@v2
+    
+    - name: Install Dependencies
+      run: |
+        wget -O - https://apt.llvm.org/llvm-snapshot.gpg.key|sudo apt-key add -
+        echo "deb http://apt.llvm.org/focal/ llvm-toolchain-focal-${{env.CLANG_VER}} main" | sudo tee -a /etc/apt/sources.list
+        sudo apt-get update
+        sudo apt-get install libsdl2-dev libsdl2-ttf-dev libsdl2-net-dev libsdl2-2.0-0 libsdl2-ttf-2.0-0 libsdl2-net-2.0-0 nasm clang-${{env.CLANG_VER}} clang-tools-${{env.CLANG_VER}} clang-tidy-${{env.CLANG_VER}} 
+        
+    - name: make
+      run: |
+        cd bin/linux
+        sed '/^.*CXX .*$/d' makefile >makefile.clang
+        export CXX="clang-${{CLANG_VER}} -Wall -Wextra -Wpedantic -Wformat=2 -Wcast-align -Wsign-conversion -Wpadded -std=c11 -Wstrict-prototypes -Wold-style-definition -I ../../include"
+        make --file=makefile.clang
+
+    - name: Copy readme etc
+      run: |
+        cp bin/linux/install64.txt .
+        
+              
+    - name: 'Tar files'
+      run: |
+        tar -czf bbcsdl.tgz bbcsdl libstb.so install64.txt lib bbcsdl.bbc examples licence.txt
+
+    - name: 'Upload Artifact'
+      uses: actions/upload-artifact@v2
+      with:
+        name: bbcsdl
+        path: bbcsdl.tgz    
+      
