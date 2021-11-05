@@ -3,7 +3,7 @@
 *       Copyright (C) R. T. Russell, 2021                          *
 *                                                                  *
 *       bbccon.c Main program, Initialisation, Keyboard handling   *
-*       Version 0.33a, 18-Apr-2021                                 *
+*       Version 0.37a, 03-Sep-2021                                 *
 \******************************************************************/
 
 #define _GNU_SOURCE
@@ -21,7 +21,7 @@
 #define QRYTIME 1000 // Milliseconds to wait for cursor query response
 #define QSIZE 16     // Twice longest expected escape sequence
 
-#ifdef __WIN32__
+#ifdef _WIN32
 #include <windows.h>
 #include <conio.h>
 typedef int timer_t ;
@@ -30,9 +30,9 @@ typedef int timer_t ;
 #define myfseek _fseeki64
 #define PLATFORM "Win32"
 #define realpath(N,R) _fullpath((R),(N),_MAX_PATH)
-#define ENABLE_VIRTUAL_TERMINAL_PROCESSING 0x0004
-#define DISABLE_NEWLINE_AUTO_RETURN 0x0008
-#define ENABLE_VIRTUAL_TERMINAL_INPUT 0x0200
+#define ENABLE_VIRTUAL_TERMINAL_PROCESSING 0x4
+#define DISABLE_NEWLINE_AUTO_RETURN 0x8
+#define ENABLE_VIRTUAL_TERMINAL_INPUT 0x200
 BOOL WINAPI K32EnumProcessModules (HANDLE, HMODULE*, DWORD, LPDWORD) ;
 #else
 #include <termios.h>
@@ -155,7 +155,7 @@ static int getinp (unsigned char *pinp)
 	return 0 ;
 }
 
-#ifdef __WIN32__
+#ifdef _WIN32
 #define RTLD_DEFAULT (void *)(-1)
 static void *dlsym (void *handle, const char *symbol)
 {
@@ -306,7 +306,7 @@ int getkey (unsigned char *pkey)
 // Get millisecond tick count:
 unsigned int GetTicks (void)
 {
-#ifdef __WIN32__
+#ifdef _WIN32
 	return timeGetTime () ;
 #else
 	struct timespec ts ;
@@ -522,13 +522,13 @@ long long apicall_ (long long (*APIfunc) (size_t, size_t, size_t, size_t, size_t
 			volatile double e, volatile double f, volatile double g, volatile double h)
 	{
 		long long result ;
-#ifdef __WIN32__
+#ifdef _WIN32
 		static void* savesp ;
 		asm ("mov %%esp,%0" : "=m" (savesp)) ;
 #endif
 		result = APIfunc (p->i[0], p->i[1], p->i[2], p->i[3], p->i[4], p->i[5],
 				p->i[6], p->i[7], p->i[8], p->i[9], p->i[10], p->i[11]) ;
-#ifdef __WIN32__
+#ifdef _WIN32
 		asm ("mov %0,%%esp" : : "m" (savesp)) ;
 #endif
 		return result ;
@@ -547,13 +547,13 @@ double fltcall_ (double (*APIfunc) (size_t, size_t, size_t, size_t, size_t, size
 			volatile double e, volatile double f, volatile double g, volatile double h)
 	{
 		double result ;
-#ifdef __WIN32__
+#ifdef _WIN32
 		static void* savesp ;
 		asm ("mov %%esp,%0" : "=m" (savesp)) ;
 #endif
 		result = APIfunc (p->i[0], p->i[1], p->i[2], p->i[3], p->i[4], p->i[5],
 				p->i[6], p->i[7], p->i[8], p->i[9], p->i[10], p->i[11]) ;
-#ifdef __WIN32__
+#ifdef _WIN32
 		asm ("mov %0,%%esp" : : "m" (savesp)) ;
 #endif
 		return result ;
@@ -919,6 +919,7 @@ void osline (char *buffer)
 				    }
 				break ;
 
+			case 9:
 			case 132:
 			case 133:
 			case 140:
@@ -1116,7 +1117,7 @@ int oscall (int addr)
 // Request memory allocation above HIMEM:
 heapptr oshwm (void *addr, int settop)
 {
-#ifdef __WIN32__
+#ifdef _WIN32
 	if ((addr < userRAM) ||
 	    (addr > (userRAM + MaximumRAM)) ||
 	    (NULL == VirtualAlloc (userRAM, addr - userRAM,
@@ -1232,7 +1233,13 @@ static void readb (FILE *context, unsigned char *buffer, FCB *pfcb)
 		error (222, "Invalid channel") ;
 //	if (pfcb->p != pfcb->o) Windows requires fseek to be called ALWAYS
 	myfseek (context, (pfcb->p - pfcb->o) & 0xFF, SEEK_CUR) ;
+#ifdef _WIN32
+	long long ptr = myftell (context) ;
+#endif
 	amount = fread (buffer, 1, 256, context) ;
+#ifdef _WIN32
+	myfseek (context, ptr + amount, SEEK_SET) ; // filetest.bbc fix (32-bit)
+#endif
 	pfcb->p = 0 ;
 	pfcb->o = amount & 0xFF ;
 	pfcb->w = 0 ;
@@ -1255,7 +1262,13 @@ static int writeb (FILE *context, unsigned char *buffer, FCB *pfcb)
 		error (222, "Invalid channel") ;
 	if (pfcb->f & 1)
 		myfseek (context, pfcb->o ? -pfcb->o : -256, SEEK_CUR) ;
+#ifdef _WIN32
+	long long ptr = myftell (context) ;
+#endif
 	amount = fwrite (buffer, 1, pfcb->w ? pfcb->w : 256, context) ;
+#ifdef _WIN32
+	myfseek (context, ptr + amount, SEEK_SET) ; // assemble.bbc asmtst64.bba fix
+#endif
 	pfcb->o = amount & 0xFF ;
 	pfcb->w = 0 ;
 	pfcb->f = 1 ;
@@ -1424,23 +1437,19 @@ void osshut (void *chan)
 // Start interpreter:
 int entry (void *immediate)
 {
-	memset (&stavar[1], 0, (char *)datend - (char *)&stavar[1]) ;
 
 	accs = (char*) userRAM ;		// String accumulator
-	buff = (char*) accs + 0x10000 ;		// Temporary string buffer
+	buff = (char*) accs + ACCSLEN ;		// Temporary string buffer
 	path = (char*) buff + 0x100 ;		// File path
 	keystr = (char**) (path + 0x100) ;	// *KEY strings
 	keybdq = (char*) keystr + 0x100 ;	// Keyboard queue
 	eventq = (void*) keybdq + 0x100 ;	// Event queue
-	envels = (signed char*) eventq + 0x200 ;// Envelopes
-	waves = (short*) (envels + 0x100) ;	// Waveforms n.b. &20000 bytes long
-	filbuf[0] = (waves + 0x10000) ;		// File buffers n.b. pointer arithmetic!!
-	usrchr = (char*) (filbuf[0] + 0x800) ;	// User-defined characters
-	tempo = 0x45 ;				// Default SOUND tempo
+	filbuf[0] = (eventq + 0x200 / 4) ;	// File buffers n.b. pointer arithmetic!!
+
 	farray = 1 ;				// @hfile%() number of dimensions
 	fasize = MAX_PORTS + MAX_FILES + 4 ;	// @hfile%() number of elements
 
-#ifndef __WIN32__
+#ifndef _WIN32
 	vflags = UTF8 ;				// Not |= (fails on Linux build)
 #endif
 
@@ -1464,7 +1473,7 @@ int entry (void *immediate)
 	return basic (progRAM, userTOP, immediate) ;
 }
 
-#ifdef __WIN32__
+#ifdef _WIN32
 static void UserTimerProc (UINT uUserTimerID, UINT uMsg, void *dwUser, void *dw1, void *dw2)
 {
 	if (timtrp)
@@ -1610,7 +1619,7 @@ static void SetLoadDir (char *path)
 		getcwd (szLoadDir, MAX_PATH) ;
 	}
 
-#ifdef __WIN32__
+#ifdef _WIN32
 	strcat (szLoadDir, "\\") ;
 #else
 	strcat (szLoadDir, "/") ;
@@ -1626,7 +1635,7 @@ void *immediate ;
 FILE *ProgFile, *TestFile ;
 char szAutoRun[MAX_PATH + 1] ;
 
-#ifdef __WIN32__
+#ifdef _WIN32
 int orig_stdout = -1 ;
 int orig_stdin = -1 ;
 HANDLE hThread = NULL ;
@@ -1638,7 +1647,7 @@ HANDLE hThread = NULL ;
 
 	char *pstrVirtual = NULL ;
 
-	while ((MaximumRAM > DEFAULT_RAM) &&
+	while ((MaximumRAM >= DEFAULT_RAM) &&
 		(NULL == (pstrVirtual = (char*) VirtualAlloc (NULL, MaximumRAM,
 						MEM_RESERVE, PAGE_EXECUTE_READWRITE))))
 		MaximumRAM /= 2 ;
@@ -1659,7 +1668,7 @@ pthread_t hThread = 0 ;
 
 	void *base = NULL ;
 
-	while ((MaximumRAM > DEFAULT_RAM) && (NULL == (base = mymap (MaximumRAM))))
+	while ((MaximumRAM >= MINIMUM_RAM) && (NULL == (base = mymap (MaximumRAM))))
 		MaximumRAM /= 2 ;
 
 	// Now commit the initial amount to physical RAM:
@@ -1676,7 +1685,7 @@ pthread_t hThread = NULL ;
 
 	platform = 2 ;
 
-	while ((MaximumRAM > DEFAULT_RAM) &&
+	while ((MaximumRAM >= MINIMUM_RAM) &&
 				((void*)-1 == (userRAM = mmap ((void *)0x10000000, MaximumRAM, 
 						PROT_EXEC | PROT_READ | PROT_WRITE, 
 						MAP_PRIVATE | MAP_ANON, -1, 0))) &&
@@ -1696,7 +1705,10 @@ pthread_t hThread = NULL ;
 	platform |= 0x40 ;
 #endif
 
-	userTOP = userRAM + DEFAULT_RAM ;
+	if (MaximumRAM > DEFAULT_RAM)
+		userTOP = userRAM + DEFAULT_RAM ;
+	else
+		userTOP = userRAM + MaximumRAM ;
 	progRAM = userRAM + PAGE_OFFSET ; // Will be raised if @cmd$ exceeds 255 bytes
 	szCmdLine = progRAM - 0x100 ;     // Must be immediately below default progRAM
 	szTempDir = szCmdLine - 0x100 ;   // Strings must be allocated on BASIC's heap
@@ -1706,7 +1718,7 @@ pthread_t hThread = NULL ;
 
 // Get path to executable:
 
-#ifdef __WIN32__
+#ifdef _WIN32
 	if (GetModuleFileName(NULL, szLibrary, 256) == 0)
 #endif
 #ifdef __linux__
@@ -1784,7 +1796,7 @@ pthread_t hThread = NULL ;
 	if (p)
 		*p = '\0' ;
 
-#ifdef __WIN32__
+#ifdef _WIN32
 	strcat (szTempDir, "\\") ;
 	strcat (szLibrary, "\\lib\\") ;
 	strcat (szUserDir, "\\bbcbasic\\") ;
@@ -1804,7 +1816,7 @@ pthread_t hThread = NULL ;
 		chdir (szLoadDir) ;
 
 	// Set console for raw input and ANSI output:
-#ifdef __WIN32__
+#ifdef _WIN32
 	// n.b.  Description of DISABLE_NEWLINE_AUTO_RETURN at MSDN is completely wrong!
 	// What it actually does is to disable converting LF into CRLF, not wrap action.
 	if (GetConsoleMode(GetStdHandle(STD_OUTPUT_HANDLE), (LPDWORD) &orig_stdout)) 
@@ -1842,7 +1854,7 @@ pthread_t hThread = NULL ;
         dispatch_release (timerqueue) ;
 #endif
 
-#ifdef __WIN32__
+#ifdef _WIN32
 	if (_isatty (_fileno (stdout)))
 		printf ("\033[0m\033[!p") ;
 	CloseHandle (hThread) ;

@@ -22,13 +22,13 @@ bbexec.o: bbexec.c BBC.h
 	$(CXX) -c -O2 $< -o $@
 
 bbeval.o: bbeval.c BBC.h
-	$(CXX) -c -O2 $< -o $@
+	$(CXX) -Wno-array-bounds -c -O2 $< -o $@
 
 bbasmb.o: bbasmb_x86_64.c BBC.h
 	$(CXX) -c -Os $< -o $@
 
 bbcmos.o: bbcmos.c bbcsdl.h
-	$(CXX) -c $(SDL_INCLUDE) -msse2 -O2 $< -o $@
+	$(CXX) -Wno-array-bounds -c $(SDL_INCLUDE) -msse2 -O2 $< -o $@
 
 bbccli.o: bbccli.c bbcsdl.h
 	$(CXX) -c $(SDL_INCLUDE) -Os $< -o $@
@@ -52,7 +52,7 @@ flood.o: flood.c
 	$(CXX) -c $(SDL_INCLUDE) -O3 $< -o $@
 
 bbdata.o: ../../src/bbdata_x86_64.nas
-	nasm -f win64 -s ../../src/bbdata_x86_64.nas -o bbdata.o -l bbdata.lst
+	nasm -f win64 -s ../../src/bbdata_x86_64.nas -o bbdata.o
 
 bbcsdl.exe: $(OBJ)
 	$(CXX) $(OBJ) \

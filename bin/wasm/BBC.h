@@ -1,13 +1,14 @@
 /******************************************************************\
 *       BBC BASIC for SDL 2.0 (Emscripten / Web Assembly)          *
-*       Copyright (c) R. T. Russell, 2000-2020                     *
+*       Copyright (c) R. T. Russell, 2000-2021                     *
 *                                                                  *
 *       BBC.h constant and variable declarations                   *
-*       Version 1.15w, 28-Aug-2020                                 *
+*       Version 1.25a, 08-Oct-2021                                 *
 \******************************************************************/
 
 // Constants:
 #define STACK_NEEDED 512
+#define ACCSLEN 65536 // Must be the same in bbcsdl.h
 
 // Sentinels:
 #define CALCHK	0xC3414C43
@@ -224,7 +225,7 @@ typedef struct tagPARM
 // the least-significant 80-bits need to be stored on the heap, in files etc.
 // When a long double is 64-bits rather than 80-bits (e.g. ARM) it will be necessary
 // to force the type word (.i.t or .s.t member) to a value other than 0 or -1. 
-typedef union tagVAR
+typedef union __attribute__ ((packed)) __attribute__ ((aligned (4))) tagVAR
 {
 #if defined(__arm__) || defined(__aarch64__) || defined(__EMSCRIPTEN__)
 	double f ;
@@ -250,7 +251,7 @@ typedef union tagVAR
 } VAR, *LPVAR ; 
 
 // String descriptor:
-typedef struct tagSTR
+typedef struct __attribute__ ((packed)) __attribute__ ((aligned (4))) tagSTR
 {
 	heapptr p ; // Assumed to be 32 bits
 	int l ;
@@ -342,18 +343,18 @@ extern int vduvar[] ;		// VDU variables
 
 extern int sysvar[] ;		// @ variables linked list
 #define memhdc (*(size_t *)((char*)sysvar + 12))	// SDL Renderer
-#define flags  (*(unsigned char *)((char*)sysvar + 199))// BASIC's Boolean flags byte
-#define link00 (*(int *)((char*)sysvar + 538))		// Terminating link in @ list
-#define diradr (*(heapptr *)((char*)sysvar + 276))
-#define dirlen (*(int *)((char*)sysvar + 280))
-#define libadr (*(heapptr *)((char*)sysvar + 296))
-#define liblen (*(int *)((char*)sysvar + 300))
-#define cmdadr (*(heapptr *)((char*)sysvar + 316))
-#define cmdlen (*(int *)((char*)sysvar + 320))
-#define usradr (*(heapptr *)((char*)sysvar + 336))
-#define usrlen (*(int *)((char*)sysvar + 340))
-#define tmpadr (*(heapptr *)((char*)sysvar + 356))
-#define tmplen (*(int *)((char*)sysvar + 360))
+#define flags  (*(unsigned char *)((char*)sysvar + 183))// BASIC's Boolean flags byte
+#define link00 (*(int *)((char*)sysvar + 490))		// Terminating link in @ list
+#define diradr (*(heapptr *)((char*)sysvar + 228))
+#define dirlen (*(int *)((char*)sysvar + 232))
+#define libadr (*(heapptr *)((char*)sysvar + 248))
+#define liblen (*(int *)((char*)sysvar + 252))
+#define cmdadr (*(heapptr *)((char*)sysvar + 268))
+#define cmdlen (*(int *)((char*)sysvar + 272))
+#define usradr (*(heapptr *)((char*)sysvar + 288))
+#define usrlen (*(int *)((char*)sysvar + 292))
+#define tmpadr (*(heapptr *)((char*)sysvar + 308))
+#define tmplen (*(int *)((char*)sysvar + 312))
 
 // Defined in bbcsdl.c:
 extern char *szCmdLine ;	// @cmd$
@@ -364,3 +365,28 @@ extern char *szTempDir ;	// @tmp$
 extern const char szNotice [] ;
 extern void *progRAM ;
 extern void *userRAM ;
+
+// Alignment helper types:
+typedef __attribute__((aligned(1))) int unaligned_int;
+typedef __attribute__((aligned(1))) intptr_t unaligned_intptr_t;
+typedef __attribute__((aligned(1))) unsigned int unaligned_uint;
+typedef __attribute__((aligned(1))) unsigned short unaligned_ushort;
+typedef __attribute__((aligned(1))) void* unaligned_void_ptr;
+typedef __attribute__((aligned(1))) char* unaligned_char_ptr;
+typedef __attribute__((aligned(1))) VAR unaligned_VAR;
+
+// Helper macros to fix alignment problem:
+#define ILOAD(p)    *((unaligned_int*)(p))
+#define ISTORE(p,i) *((unaligned_int*)(p)) = i
+#define TLOAD(p)    *((unaligned_intptr_t*)(p))
+#define TSTORE(p,i) *((unaligned_intptr_t*)(p)) = i 
+#define ULOAD(p)    *((unaligned_uint*)(p))
+#define USTORE(p,i) *((unaligned_uint*)(p)) = i 
+#define SLOAD(p)    *((unaligned_ushort*)(p))
+#define SSTORE(p,i) *((unaligned_ushort*)(p)) = i 
+#define VLOAD(p)    *((unaligned_void_ptr*)(p))
+#define VSTORE(p,i) *((unaligned_void_ptr*)(p)) = i 
+#define CLOAD(p)    *((unaligned_char_ptr*)(p))
+#define CSTORE(p,i) *((unaligned_char_ptr*)(p)) = i 
+#define NLOAD(p)    *((unaligned_VAR*)(p))
+#define NSTORE(p,i) *((unaligned_VAR*)(p)) = i
