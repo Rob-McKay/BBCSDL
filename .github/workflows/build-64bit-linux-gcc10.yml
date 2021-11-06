@@ -24,7 +24,7 @@ jobs:
       run: |
         cd console/linux
         sed '/^.*CXX .*$/d' makefile >makefile.no-cxx
-        export CXX="gcc-${{env.GCC_VER}} -Wall -Wextra -Wpedantic -Wno-pointer-arith -Wno-sign-compare -Wno-unused-parameter -std=gnu11 -Wstrict-prototypes -Wold-style-definition -I ../../include -I ../../../BBCSDL/include"
+        export CXX="gcc-${{env.GCC_VER}} -Wall -Wextra -Wpedantic -Wno-pointer-arith -Wno-sign-compare -Wno-unused-parameter -Wno-implicit-fallthrough -std=gnu11 -Wstrict-prototypes -Wold-style-definition -I ../../include -I ../../../BBCSDL/include"
         make --file=makefile.no-cxx
 
     - name: 'Tar files'
