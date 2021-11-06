@@ -17,10 +17,8 @@ jobs:
     
     - name: Install Dependencies
       run: |
-        wget -O - https://apt.llvm.org/llvm-snapshot.gpg.key|sudo apt-key add -
-        echo "deb http://apt.llvm.org/focal/ llvm-toolchain-focal-${{env.CLANG_VER}} main" | sudo tee -a /etc/apt/sources.list
         sudo apt-get update
-        sudo apt-get install nasm clang-${{env.CLANG_VER}} clang-tools-${{env.CLANG_VER}} clang-tidy-${{env.CLANG_VER}} 
+        sudo apt-get install nasm
         
     - name: make
       run: |
