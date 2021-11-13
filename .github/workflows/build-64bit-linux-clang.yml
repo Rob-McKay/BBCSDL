@@ -26,7 +26,7 @@ jobs:
       run: |
         cd console/linux
         sed '/^.*CXX .*$/d' makefile >makefile.clang
-        export CXX="clang-${{env.CLANG_VER}} -Wall -Wextra -Wpedantic -Wno-pointer-arith -Wno-sign-compare -Wno-unused-parameter -Wno-gnu-case-range -Wno-gnu-binary-literal -std=c11 -Wstrict-prototypes -Wold-style-definition -I ../../include -I ../../../BBCSDL/include -Dasm=__asm -Dintptr_t=__intptr_t"
+        export CXX="clang-${{env.CLANG_VER}} -Wall -Wextra -Wpedantic -Wno-pointer-arith -Wno-sign-compare -Wno-unused-parameter -Wno-gnu-case-range -Wno-gnu-binary-literal -std=c11 -Wstrict-prototypes -Wold-style-definition -I ../../include -I ../../../BBCSDL/include -Dasm=__asm -Dintptr_t=__intptr_t -fprofile-instr-generate -fcoverage-mapping -g "
         make --file=makefile.clang
 
     - name: 'Tar files'
@@ -42,5 +42,29 @@ jobs:
       
     - name: 'Run Tests'
       run: |
+        if [ -f default.profraw ]; then
+          rm default.profraw
+        fi
+
+        if [ -f tests/bbcbasic-*.profraw ]; then
+          rm tests/bbcbasic-*.profraw
+        fi
+
+        if [ -f bbcbasic.profdata ]; then
+          rm bbcbasic.profdata
+        fi
+
+        echo Running tests
+        export LLVM_PROFILE_FILE="bbcbasic-%m.profraw" 
+
         echo QUIT | ./bbcbasic tests/ALLTESTS.bbc
+
+        echo Running llvm-profdata-${{env.CLANG_VER}}
+        llvm-profdata-${{env.CLANG_VER}} merge -sparse -instr tests/bbcbasic-*.profraw -o bbcbasic.profdata
+
+        echo Running llvm-cov-${{env.CLANG_VER}}
+        llvm-cov-${{env.CLANG_VER}} show -show-regions -format=html -output-dir=coverage -instr-profile=bbcbasic.profdata ./bbcbasic
+        llvm-cov-${{env.CLANG_VER}} report ./bbcbasic -instr-profile=bbcbasic.profdata
+
+        tar -czf bbcbasic-console-coverage.tgz coverage/
         
