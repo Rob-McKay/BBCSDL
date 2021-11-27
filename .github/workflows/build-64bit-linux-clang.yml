@@ -26,7 +26,7 @@ jobs:
       run: |
         cd bin/linux
         sed '/^.*CXX .*$/d' makefile >makefile.clang
-        export CXX="clang-${{env.CLANG_VER}} -Wall -Wextra -Wpedantic -Wformat=2 -Wno-pointer-arith -std=c11 -Wno-strict-prototypes -Wold-style-definition -Dintptr_t=__intptr_t -I ../../include"
+        export CXX="clang-${{env.CLANG_VER}} -Wall -Wextra -Wpedantic -Wformat=2 -Wno-sign-compare -Wno-pointer-arith -std=c11 -Wno-strict-prototypes -Wold-style-definition -Dintptr_t=__intptr_t -Dasm=__asm -I ../../include"
         make --file=makefile.clang
 
     - name: Copy readme etc
