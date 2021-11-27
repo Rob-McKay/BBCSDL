@@ -6,7 +6,7 @@
 *       Broadcasting Corporation and used with their permission   *
 *                                                                 *
 *       bbasmb.c: API Wrappers to satisfy function signatures     *
-*       Version 1.23a, 03-Jul-2021                                *
+*       Version 1.26a, 17-Nov-2021                                *
 \*****************************************************************/
 
 #include <stdlib.h>
@@ -23,6 +23,7 @@
 #include "SDL_net.h"
 #include "BBC.h"
 #include "SDL2_gfxPrimitives.h"
+#include "SDL2_rotozoom.h"
 
 typedef size_t st ;
 typedef double db ;
@@ -108,6 +109,14 @@ long long BBC_aaFilledPolyBezierColor(st renderer, st x, st y, st n, st s, st co
 	  st i8, st i9, st i10, st i11, db f0, db f1, db f2, db f3, db f4, db f5, db f6, db f7)
 	{ return aaFilledPolyBezierColor((SDL_Renderer*) renderer, (double *) x, (double *) y, n, s, color); }
 
+double BBC_EvaluateBezier(st data, st ndata, st i2, st i3, st i4, st i5, st i6, st i7,
+	  st i8, st i9, st i10, st i11, db t, db f1, db f2, db f3, db f4, db f5, db f6, db f7)
+	{ return _evaluateBezier((double*) data, ndata, t); }
+
+long long BBC_RotoZoomSurface(st src, st i1, st i2, st i3, st i4, st i5, st i6, st i7,
+	  st i8, st i9, st i10, st i11, db angle, db zoomx, db zoomy, db f3, db f4, db f5, db f6, db f7)
+	{ return (intptr_t) rotozoomSurfaceXY((SDL_Surface*) src, angle, zoomx, zoomy, 0); }
+
 // 2D Surfaces and Textures (e.g. used by imglib.bbc):
 
 long long BBC_CreateTextureFromSurface(st renderer, st surface, st i2, st i3, st i4, st i5, st i6, st i7,
@@ -190,6 +199,10 @@ long long BBC_RenderFillRects(st renderer, st rects, st count, st i3, st i4, st 
 	  st i8, st i9, st i10, st i11, db f0, db f1, db f2, db f3, db f4, db f5, db f6, db f7)
 	{ return SDL_RenderFillRects((SDL_Renderer*) renderer, (const SDL_Rect*) rects, count); }
 
+long long BBC_RenderFlush(st renderer, st i1, st i2, st i3, st i4, st i5, st i6, st i7,
+	  st i8, st i9, st i10, st i11, db f0, db f1, db f2, db f3, db f4, db f5, db f6, db f7)
+	{ return SDL_RenderFlush((SDL_Renderer*) renderer); }
+
 long long BBC_RenderDrawPoint(st renderer, st x, st y, st i3, st i4, st i5, st i6, st i7,
 	  st i8, st i9, st i10, st i11, db f0, db f1, db f2, db f3, db f4, db f5, db f6, db f7)
 	{ return SDL_RenderDrawPoint((SDL_Renderer*) renderer, x, y); }
@@ -238,6 +251,10 @@ long long BBC_CreateRGBSurface(st flgs, st width, st height, st depth, st Rmask,
 	  st i8, st i9, st i10, st i11, db f0, db f1, db f2, db f3, db f4, db f5, db f6, db f7)
 	{ return (intptr_t) SDL_CreateRGBSurface(flgs, width, height, depth, Rmask, Gmask, Bmask, Amask); }
 
+long long BBC_CreateRGBSurfaceWithFormat(st flgs, st width, st height, st depth, st format, st i5, st i6, st i7,
+	  st i8, st i9, st i10, st i11, db f0, db f1, db f2, db f3, db f4, db f5, db f6, db f7)
+	{ return (intptr_t) SDL_CreateRGBSurfaceWithFormat(flgs, width, height, depth, format); }
+
 long long BBC_SetSurfaceAlphaMod(st surface, st alpha, st i2, st i3, st i4, st i5, st i6, st i7,
 	  st i8, st i9, st i10, st i11, db f0, db f1, db f2, db f3, db f4, db f5, db f6, db f7)
 	{ return SDL_SetSurfaceAlphaMod((SDL_Surface*) surface, alpha); }
@@ -245,6 +262,10 @@ long long BBC_SetSurfaceAlphaMod(st surface, st alpha, st i2, st i3, st i4, st i
 long long BBC_SetSurfaceColorMod(st surface, st r, st g, st b, st i4, st i5, st i6, st i7,
 	  st i8, st i9, st i10, st i11, db f0, db f1, db f2, db f3, db f4, db f5, db f6, db f7)
 	{ return SDL_SetSurfaceColorMod((SDL_Surface*) surface, r, g, b); }
+
+long long BBC_SetSurfaceBlendMode(st surface, st blend, st i2, st i3, st i4, st i5, st i6, st i7,
+	  st i8, st i9, st i10, st i11, db f0, db f1, db f2, db f3, db f4, db f5, db f6, db f7)
+	{ return SDL_SetSurfaceBlendMode((SDL_Surface*) surface, blend); }
 
 long long BBC_UpperBlit(st src, st srcrect, st dst, st dstrect, st i4, st i5, st i6, st i7,
 	  st i8, st i9, st i10, st i11, db f0, db f1, db f2, db f3, db f4, db f5, db f6, db f7)
@@ -275,6 +296,10 @@ long long BBC_stbi_set_flip_vertically_on_load(st flip, st i1, st i2, st i3, st 
 	{ stbi_set_flip_vertically_on_load(flip); return 0; }
 
 // 3D (OpenGL) graphics:
+
+long long BBC_GL_BindTexture(st texture, st texw, st texh, st i3, st i4, st i5, st i6, st i7,
+	  st i8, st i9, st i10, st i11, db f0, db f1, db f2, db f3, db f4, db f5, db f6, db f7)
+	{ return SDL_GL_BindTexture((SDL_Texture*) texture, (float*) texw, (float*) texh); }
 
 long long BBC_GL_CreateContext(st window, st i1, st i2, st i3, st i4, st i5, st i6, st i7,
 	  st i8, st i9, st i10, st i11, db f0, db f1, db f2, db f3, db f4, db f5, db f6, db f7)
@@ -367,6 +392,15 @@ long long BBC_LoadWAV_RW(st src, st freesrc, st spec, st audio_buf, st audio_len
 long long BBC_FreeWAV(st audio_buf, st i1, st i2, st i3, st i4, st i5, st i6, st i7,
 	  st i8, st i9, st i10, st i11, db f0, db f1, db f2, db f3, db f4, db f5, db f6, db f7)
 	{ SDL_FreeWAV((Uint8*) audio_buf); return 0; }
+
+long long BBC_BuildAudioCVT(st cvt, st src_fmt, st src_chan, st src_rate, st dst_fmt, st dst_chan, st dst_rate, st i7,
+	  st i8, st i9, st i10, st i11, db f0, db f1, db f2, db f3, db f4, db f5, db f6, db f7)
+	{ return SDL_BuildAudioCVT((SDL_AudioCVT*) cvt, (SDL_AudioFormat) src_fmt, src_chan, src_rate,
+                      		                        (SDL_AudioFormat) dst_fmt, dst_chan, dst_rate); }
+
+long long BBC_ConvertAudio(st cvt, st i1, st i2, st i3, st i4, st i5, st i6, st i7,
+	  st i8, st i9, st i10, st i11, db f0, db f1, db f2, db f3, db f4, db f5, db f6, db f7)
+	{ return SDL_ConvertAudio((SDL_AudioCVT*) cvt); }
 
 // Time-related functions:
 
@@ -532,11 +566,13 @@ long long BBC_emscripten_async_wget(st url, st file, st i2, st i3, st i4, st i5,
 	return 0 ;
 }
 
-#define NSYS 109
+#define NSYS 117
 #define POW2 128 // smallest power-of-2 >= NSYS
 
 static const char *sysname[NSYS] = {
 	"B2D_GetProcAddress",
+	"GFX_EvaluateBezier",
+	"GFX_RotoZoomSurface",
 	"GFX_aaArcColor",
 	"GFX_aaBezierColor",
 	"GFX_aaFilledEllipseColor",
@@ -561,17 +597,21 @@ static const char *sysname[NSYS] = {
 	"SDLNet_TCP_Recv",
 	"SDLNet_TCP_Send",
 	"SDL_AddTimer",
+	"SDL_BuildAudioCVT",
 	"SDL_ClearQueuedAudio",
 	"SDL_CloseAudioDevice",
 	"SDL_ComposeCustomBlendMode",
+	"SDL_ConvertAudio",
 	"SDL_ConvertSurfaceFormat",
 	"SDL_CreateRGBSurface",
+	"SDL_CreateRGBSurfaceWithFormat",
 	"SDL_CreateTexture",
 	"SDL_CreateTextureFromSurface",
 	"SDL_DestroyTexture",
 	"SDL_FillRect",
 	"SDL_FreeSurface",
 	"SDL_FreeWAV",
+	"SDL_GL_BindTexture",
 	"SDL_GL_CreateContext",
 	"SDL_GL_DeleteContext",
 	"SDL_GL_GetCurrentContext",
@@ -609,6 +649,7 @@ static const char *sysname[NSYS] = {
 	"SDL_RenderDrawPoints",
 	"SDL_RenderFillRect",
 	"SDL_RenderFillRects",
+	"SDL_RenderFlush",
 	"SDL_RenderReadPixels",
 	"SDL_RenderSetClipRect",
 	"SDL_SetColorKey",
@@ -618,6 +659,7 @@ static const char *sysname[NSYS] = {
 	"SDL_SetRenderDrawColor",
 	"SDL_SetRenderTarget",
 	"SDL_SetSurfaceAlphaMod",
+	"SDL_SetSurfaceBlendMode",
 	"SDL_SetSurfaceColorMod",
 	"SDL_SetTextureAlphaMod",
 	"SDL_SetTextureBlendMode",
@@ -648,6 +690,8 @@ static const char *sysname[NSYS] = {
 
 static void *sysfunc[NSYS] = {
 	B2D_GetProcAddress,
+	BBC_EvaluateBezier,
+	BBC_RotoZoomSurface,
 	BBC_aaArcColor,
 	BBC_aaBezierColor,
 	BBC_aaFilledEllipseColor,
@@ -672,17 +716,21 @@ static void *sysfunc[NSYS] = {
 	BBC_Net_TCP_Recv,
 	BBC_Net_TCP_Send,
 	BBC_AddTimer,
+	BBC_BuildAudioCVT,
 	BBC_ClearQueuedAudio,
 	BBC_CloseAudioDevice,
 	BBC_ComposeCustomBlendMode,
+	BBC_ConvertAudio,
 	BBC_ConvertSurfaceFormat,
 	BBC_CreateRGBSurface,
+	BBC_CreateRGBSurfaceWithFormat,
 	BBC_CreateTexture,
 	BBC_CreateTextureFromSurface,
 	BBC_DestroyTexture,
 	BBC_FillRect,
 	BBC_FreeSurface,
 	BBC_FreeWAV,
+	BBC_GL_BindTexture,
 	BBC_GL_CreateContext,
 	BBC_GL_DeleteContext,
 	BBC_GL_GetCurrentContext,
@@ -720,6 +768,7 @@ static void *sysfunc[NSYS] = {
 	BBC_RenderDrawPoints,
 	BBC_RenderFillRect,
 	BBC_RenderFillRects,
+	BBC_RenderFlush,
 	WASM_RenderReadPixels,
 	WASM_RenderSetClipRect,
 	BBC_SetColorKey,
@@ -729,6 +778,7 @@ static void *sysfunc[NSYS] = {
 	BBC_SetRenderDrawColor,
 	BBC_SetRenderTarget,
 	BBC_SetSurfaceAlphaMod,
+	BBC_SetSurfaceBlendMode,
 	BBC_SetSurfaceColorMod,
 	BBC_SetTextureAlphaMod,
 	BBC_SetTextureBlendMode,
@@ -862,6 +912,10 @@ long long BBC_glEnableVertexAttribArray(st index, st i1, st i2, st i3, st i4, st
 	  st i8, st i9, st i10, st i11, db f0, db f1, db f2, db f3, db f4, db f5, db f6, db f7)
 	{ glEnableVertexAttribArray(index); return 0; }
 
+long long BBC_glFinish(st i0, st i1, st i2, st i3, st i4, st i5, st i6, st i7,
+	  st i8, st i9, st i10, st i11, db f0, db f1, db f2, db f3, db f4, db f5, db f6, db f7)
+	{ glFinish(); return 0; }
+
 long long BBC_glGenBuffers(st num, st buffers, st i2, st i3, st i4, st i5, st i6, st i7,
 	  st i8, st i9, st i10, st i11, db f0, db f1, db f2, db f3, db f4, db f5, db f6, db f7)
 	{ glGenBuffers(num, (GLuint*) buffers); return 0; }
@@ -905,6 +959,10 @@ long long BBC_glIsTexture(st texture, st i1, st i2, st i3, st i4, st i5, st i6, 
 long long BBC_glLinkProgram(st program, st i1, st i2, st i3, st i4, st i5, st i6, st i7,
 	  st i8, st i9, st i10, st i11, db f0, db f1, db f2, db f3, db f4, db f5, db f6, db f7)
 	{ glLinkProgram(program); return 0; }
+
+long long BBC_glReadPixels(st x, st y, st width, st height, st format, st type, st data, st i7,
+	  st i8, st i9, st i10, st i11, db f0, db f1, db f2, db f3, db f4, db f5, db f6, db f7)
+	{ glReadPixels(x, y, width, height, format, type, (void*) data); return 0; }
 
 long long BBC_glShaderSource(st shader, st count, st string, st length, st i4, st i5, st i6, st i7,
 	  st i8, st i9, st i10, st i11, db f0, db f1, db f2, db f3, db f4, db f5, db f6, db f7)
@@ -986,7 +1044,7 @@ long long BBC_glDeleteFramebuffers(st num, st framebuffers, st i2, st i3, st i4,
 	  st i8, st i9, st i10, st i11, db f0, db f1, db f2, db f3, db f4, db f5, db f6, db f7)
 	{ glDeleteFramebuffers(num, (const GLuint*) framebuffers); return 0; }
 
-#define GLNSYS 52
+#define GLNSYS 54
 #define GLPOW2 64 // smallest power-of-2 >= GLNSYS
 
 static const char *GLname[GLNSYS] = {
@@ -1015,6 +1073,7 @@ static const char *GLname[GLNSYS] = {
 	"glDrawArrays",
 	"glEnable",
 	"glEnableVertexAttribArray",
+	"glFinish",
 	"glFramebufferTexture2D",
 	"glGenBuffers",
 	"glGenFramebuffers",
@@ -1029,6 +1088,7 @@ static const char *GLname[GLNSYS] = {
 	"glIsBuffer",
 	"glIsTexture",
 	"glLinkProgram",
+	"glReadPixels",
 	"glScissor",
 	"glShaderSource",
 	"glTexImage2D",
@@ -1069,6 +1129,7 @@ static void *GLfunc[GLNSYS] = {
 	BBC_glDrawArrays,
 	BBC_glEnable,
 	BBC_glEnableVertexAttribArray,
+	BBC_glFinish,
 	BBC_glFramebufferTexture2D,
 	BBC_glGenBuffers,
 	BBC_glGenFramebuffers,
@@ -1083,6 +1144,7 @@ static void *GLfunc[GLNSYS] = {
 	BBC_glIsBuffer,
 	BBC_glIsTexture,
 	BBC_glLinkProgram,
+	BBC_glReadPixels,
 	BBC_glScissor,
 	BBC_glShaderSource,
 	BBC_glTexImage2D,
