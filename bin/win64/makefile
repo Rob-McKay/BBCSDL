@@ -16,13 +16,13 @@ OBJ = bbmain.o bbexec.o bbeval.o bbcmos.o bbccli.o \
 all: bbcsdl.exe
 
 bbmain.o: bbmain.c BBC.h
-	$(CXX) -c -O2 $< -o $@
+	$(CXX) -c -O2 -freg-struct-return -ffast-math $< -o $@
 
 bbexec.o: bbexec.c BBC.h
-	$(CXX) -c -O2 $< -o $@
+	$(CXX) -c -O2 -freg-struct-return -ffast-math $< -o $@
 
 bbeval.o: bbeval.c BBC.h
-	$(CXX) -Wno-array-bounds -c -O2 $< -o $@
+	$(CXX) -Wno-array-bounds -c -O2 -freg-struct-return -ffast-math $< -o $@
 
 bbasmb.o: bbasmb_x86_64.c BBC.h
 	$(CXX) -c -Os $< -o $@
@@ -56,4 +56,4 @@ bbdata.o: ../../src/bbdata_x86_64.nas
 
 bbcsdl.exe: $(OBJ)
 	$(CXX) $(OBJ) \
-	-o bbcsdl.exe -lmingw32 -mthreads -mwindows $(SDL_LIB) -Wl,-s -Wl,--export-all-symbols
+	-o bbcsdl.exe -lz -lmingw32 -mthreads -mwindows $(SDL_LIB) -Wl,-s -Wl,--export-all-symbols

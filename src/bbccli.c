@@ -1,13 +1,13 @@
 /*****************************************************************\
 *       32-bit or 64-bit BBC BASIC for SDL 2.0                    *
-*       (C) 2017-2021  R.T.Russell  http://www.rtrussell.co.uk/   *
+*       (C) 2017-2022  R.T.Russell  http://www.rtrussell.co.uk/   *
 *                                                                 *
 *       The name 'BBC BASIC' is the property of the British       *
 *       Broadcasting Corporation and used with their permission   *
 *                                                                 *
 *       bbccli.c: Command Line Interface (OS emulation)           *
 *       This module runs in the context of the interpreter thread *
-*       Version 1.22a, 15-May-2021                                *
+*       Version 1.33a, 14-Oct-2022                                *
 \*****************************************************************/
 
 #include <stdlib.h>
@@ -44,6 +44,7 @@ void text (const char*) ;
 void listline (signed char*, int*) ;
 void quiet (void) ;
 void getcsr (int*, int*) ;
+void SetErrorBBC (void) ;
 
 static char *cmds[NCMDS] = {
 		"bye", "cd", "chdir", "copy", "del", "delete", "dir", "display",
@@ -299,7 +300,10 @@ void oscli (char *cmd)
 				return ;
 			    }
 			if (chdir (path1))
+			    {
+				SetErrorBBC () ;
 				error (206, "Bad directory") ;
+			    }
 			return ;
 
 		case COPY:			// *COPY oldfile newfile
@@ -335,7 +339,10 @@ void oscli (char *cmd)
 		case ERASE:			// *ERASE filename
 			setup (path1, p, ".bbc", ' ', NULL) ;
 			if (remove (path1))
+			    {
+				SetErrorBBC () ;
 				error (254, "Bad command") ;	// Bad command
+			    }
 			return ;
 
 		case DIRCMD:
@@ -377,7 +384,10 @@ void oscli (char *cmd)
 
 			d = opendir (q) ;
 			if (d == NULL)
+			    {
+				SetErrorBBC () ;
 				error (254, "Bad command") ;
+			    }
 
 			while (1)
 			    {
@@ -486,11 +496,7 @@ void oscli (char *cmd)
 					liston |= BIT0 ;
 					break ;
 				case 80:
-#if defined __arm__ || defined __aarch64__
-					error (255, "Unsupported") ;
-#else
 					liston |= (BIT0 + BIT1) ;
-#endif
 					break ;
 				default:
 					error (254, "Bad command") ;
@@ -670,12 +676,12 @@ void oscli (char *cmd)
 			q = 0 ;
 			if (*p != 0x0D)
 			    {
-				q = (char *) (size_t) strtoll (p, &p, 16) ;
+				q = (char *) (size_t) strtoull (p, &p, 16) ;
 				while (*p == ' ') p++ ;
 				if (*p == '+')
 					n = strtol (p + 1, &p, 16) ;
 				else
-					n = (char *) (size_t) strtoll (p, &p, 16) - q ;
+					n = (char *) (size_t) strtoull (p, &p, 16) - q ;
 			    }
 			if ((n <= 0) && ((q < (char *)userRAM) || (q >= (char *)userTOP)))
 				error (8, NULL) ; // 'Address out of range'
@@ -691,8 +697,11 @@ void oscli (char *cmd)
 
 		case LOCK:
 			setup (path1, p, ".bbc", ' ', NULL) ;
-			if (0 != chmod (path1, _S_IREAD))
+			if (chmod (path1, _S_IREAD))
+			    {
+				SetErrorBBC () ;
 				error (254, "Bad command") ;
+			    }
 			return ;
 
 		case LOWERCASE:
@@ -706,11 +715,14 @@ void oscli (char *cmd)
 		case MKDIR:
 			setup (path1, p, "", ' ', NULL) ;
 #ifdef __WINDOWS__
-			if (0 != mkdir (path1))
+			if (mkdir (path1))
 #else
-			if (0 != mkdir (path1, 0777))
+			if (mkdir (path1, 0777))
 #endif
+			    {
+				SetErrorBBC () ;
 				error (254, "Bad command") ;
+			    }
 			return ;
 
 		case MDISPLAY:		// *MDISPLAY hexaddr [xpos,ypos[,width,height[,keycol]]]
@@ -764,8 +776,11 @@ void oscli (char *cmd)
 		case RD:
 		case RMDIR:
 			setup (path1, p, "", ' ', NULL) ;
-			if (0 != rmdir (path1))
+			if (rmdir (path1))
+			    {
+				SetErrorBBC () ;
 				error (254, "Bad command") ;
+			    }
 			return ;
 
 		case REFRESH:
@@ -795,8 +810,11 @@ void oscli (char *cmd)
 				BBC_RWclose (dstfile) ;
 				error (196, "File exists") ;
 			    }
-			if (0 != rename (path1, path2))
+			if (rename (path1, path2))
+			    {
+				SetErrorBBC () ;
 				error (196, "File exists") ;
+			    }
 			return ;
 
 		case RUN:
@@ -812,8 +830,11 @@ void oscli (char *cmd)
 			pushev (EVT_RUNJS, path1, NULL) ;
 			waitev () ;
 #else
-			if (0 != system (path1))
+			if (system (path1))
+			    {
+				SetErrorBBC () ;
 				error (254, "Bad command") ;
+			    }
 #endif
 			return ;
 
@@ -823,12 +844,12 @@ void oscli (char *cmd)
 			q = 0 ;
 			if (*p != 0x0D)
 			    {
-				q = (char *) (size_t) strtoll (p, &p, 16) ;
+				q = (char *) (size_t) strtoull (p, &p, 16) ;
 				while (*p == ' ') p++ ;
 				if (*p == '+')
 					n = strtol (p + 1, &p, 16) ;
 				else
-					n = (char *) (size_t) strtoll (p, &p, 16) - q ;
+					n = (char *) (size_t) strtoull (p, &p, 16) - q ;
 			    }
 			if (n <= 0)
 				error (254, "Bad command") ;
@@ -927,8 +948,11 @@ void oscli (char *cmd)
 
 		case UNLOCK:
 			setup (path1, p, ".bbc", ' ', NULL) ;
-			if (0 != chmod (path1, _S_IREAD | _S_IWRITE))
+			if (chmod (path1, _S_IREAD | _S_IWRITE))
+			    {
+				SetErrorBBC () ;
 				error (254, "Bad command") ;
+			    }
 			return ;
 
 		case VOICE:
@@ -959,14 +983,14 @@ void oscli (char *cmd)
 			h = 0 ;
 			if (*p != 0x0D)
 			    {
-				long long s = strtoll (p, &p, 16) ;
+				unsigned long long s = strtoull (p, &p, 16) ;
 				if ((s != 0) && (-1 == SDL_RWseek (srcfile, s, RW_SEEK_SET)))
 					error (189, SDL_GetError ()) ;
 				while (*p == ' ') p++ ;
 				if (*p == '+')
 					h = strtol (p + 1, &p, 16) ;
 				else
-					h = strtoll (p, &p, 16) - s ;
+					h = strtoull (p, &p, 16) - s ;
 				b = s & 0xFFFFFFFF ;
 			    }
 			do

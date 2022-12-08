@@ -1,9 +1,9 @@
 /******************************************************************\
 *       BBC BASIC Minimal Console Version                         *
-*       Copyright (C) R. T. Russell, 2021                         *
+*       Copyright (C) R. T. Russell, 2022                         *
 *                                                                 *
 *       bbccos.c: Command Line Interface, ANSI VDU drivers        *
-*       Version 0.37a, 14-Sep-2021                                *
+*       Version 0.42a, 14-Oct-2022                                *
 \*****************************************************************/
 
 #include <stdlib.h>
@@ -37,7 +37,7 @@ typedef dispatch_source_t timer_t ;
 #endif
 
 #undef MAX_PATH
-#define NCMDS 39	// number of OSCLI commands
+#define NCMDS 42	// number of OSCLI commands
 #define POWR2 32	// largest power-of-2 less than NCMDS
 #ifdef PICO
 #define COPYBUFLEN 512	// length of buffer used for *COPY command
@@ -89,7 +89,7 @@ static char *cmds[NCMDS] = {
 		"help", "hex", "input", "key", "list", "load", "lock", "lowercase",
 		"md", "mkdir", "output", "quit", "rd", "refresh",
 		"ren", "rename", "rmdir", "run", "save", "spool", "spoolon",
-		"timer", "tv", "type", "unlock" } ;
+		"stereo", "tempo", "timer", "tv", "type", "unlock", "voice" } ;
 
 enum {
 		BYE, CD, CHDIR, COPY, DEL, DELETE, DIRCMD,
@@ -97,7 +97,7 @@ enum {
 		HELP, HEX, INPUT, KEY, LIST, LOAD, LOCK, LOWERCASE,
 		MD, MKDIR, OUTPUT, QUIT, RD, REFRESH,
 		REN, RENAME, RMDIR, RUN, SAVE, SPOOL, SPOOLON,
-		TIMER, TV, TYPE, UNLOCK } ;
+		STEREO, TEMPO, TIMER, TV, TYPE, UNLOCK, VOICE } ;
 
 // Change to a new screen mode:
 static void newmode (short wx, short wy, short cx, short cy, short nc, signed char bc) 
@@ -668,7 +668,7 @@ void oscli (char *cmd)
 			if (dstfile == NULL)
 			    {
 				fclose (srcfile) ;
-				error (189, "Couldn't close file") ;
+				error (189, "Couldn't create file") ;
 			    }
 			p = malloc (COPYBUFLEN) ;
 			if (p == NULL)
@@ -799,11 +799,7 @@ void oscli (char *cmd)
 					liston |= BIT0 ;
 					break ;
 				case 80:
-#if defined __arm__ || defined __aarch64__
-					error (255, "Unsupported") ;
-#else
 					liston |= (BIT0 + BIT1) ;
-#endif
 					break ;
 				default:
 					error (254, "Bad command") ;
@@ -905,12 +901,12 @@ void oscli (char *cmd)
 			q = 0 ;
 			if (*p != 0x0D)
 			    {
-				q = (char *) (size_t) strtoll (p, &p, 16) ;
+				q = (char *) (size_t) strtoull (p, &p, 16) ;
 				while (*p == ' ') p++ ;
 				if (*p == '+')
 					n = strtol (p + 1, &p, 16) ;
 				else
-					n = (char *) (size_t) strtoll (p, &p, 16) - q ;
+					n = (char *) (size_t) strtoull (p, &p, 16) - q ;
 			    }
 			if ((n <= 0) && ((q < (char *)userRAM) || (q >= (char *)userTOP)))
 				error (8, NULL) ; // 'Address out of range'
@@ -994,12 +990,12 @@ void oscli (char *cmd)
 			q = 0 ;
 			if (*p != 0x0D)
 			    {
-				q = (char *) (size_t) strtoll (p, &p, 16) ;
+				q = (char *) (size_t) strtoull (p, &p, 16) ;
 				while (*p == ' ') p++ ;
 				if (*p == '+')
 					n = strtol (p + 1, &p, 16) ;
 				else
-					n = (char *) (size_t) strtoll (p, &p, 16) - q ;
+					n = (char *) (size_t) strtoull (p, &p, 16) - q ;
 			    }
 			if (n <= 0)
 				error (254, "Bad command") ;
@@ -1103,14 +1099,14 @@ void oscli (char *cmd)
 			h = 0 ;
 			if (*p != 0x0D)
 			    {
-				long long s = strtoll (p, &p, 16) ;
+				unsigned long long s = strtoull (p, &p, 16) ;
 				if ((s != 0) && (-1 == myfseek (srcfile, s, SEEK_SET)))
 					error (189, "Couldn't seek") ;
 				while (*p == ' ') p++ ;
 				if (*p == '+')
 					h = strtol (p + 1, &p, 16) ;
 				else
-					h = strtoll (p, &p, 16) - s ;
+					h = strtoull (p, &p, 16) - s ;
 				b = s & 0xFFFFFFFF ;
 			    }
 			do
@@ -1144,6 +1140,29 @@ void oscli (char *cmd)
 			    }
 			while (h) ;
 			fclose (srcfile) ;
+			return ;
+
+		case STEREO:
+			b = 0 ;
+			n = 0 ;
+			sscanf (p, "%i,%i", &b, &n) ;
+			b &= 3 ;
+			smix[b]     = 0x4000 - (n << 7) ;
+			smix[b + 4] = 0x4000 + (n << 7) ;
+			return ;
+
+		case TEMPO:
+			n = 0 ;
+			sscanf (p, "%i", &n) ;
+			if (((n & 0x3F) <= MAX_TEMPO) && ((n & 0x3F) > 0))
+				tempo = n ;
+			return ;
+
+		case VOICE:
+			b = 0 ;
+			n = 0 ;
+			sscanf (p, "%i,%i", &b, &n) ;
+			voices[b & 3] = n & 7 ;
 			return ;
 		} ;
 

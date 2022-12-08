@@ -1,13 +1,13 @@
 /*****************************************************************\
 *       32-bit or 64-bit BBC BASIC for SDL 2.0                    *
-*       (C) 2017-2021  R.T.Russell  http://www.rtrussell.co.uk/   *
+*       (C) 2017-2022  R.T.Russell  http://www.rtrussell.co.uk/   *
 *                                                                 *
 *       The name 'BBC BASIC' is the property of the British       *
 *       Broadcasting Corporation and used with their permission   *
 *                                                                 *
 *       bbcvdu.c  VDU emulator and graphics drivers               *
 *       This module runs in the context of the GUI thread         *
-*       Version 1.26a, 14-Oct-2021                                *
+*       Version 1.30a, 03-Apr-2022                                *
 \*****************************************************************/
 
 #include <stdlib.h>
@@ -1180,6 +1180,7 @@ static void minit (signed char bc)
 		txtfor = 0 ;
 		bakgnd = colmsk << 8 ;
 		txtbak = colmsk ;
+		palette[(int) colmsk] = 0xFFFFFFFF ;
 	    }
 
 	vflags &= ~UFONT ;
@@ -1213,7 +1214,7 @@ static void gcol (char al, signed char ah)
 // Set default palette and colours:
 static void rescol (void)
 {
-	int i, n = (colmsk & (NUMCOLOURS - 1)) + 1 ;
+	int i, n = colmsk + 1 ;
 	unsigned int *p ;
 	switch (n)
 	{
@@ -1227,7 +1228,7 @@ static void rescol (void)
 		p = coltab ;
 	}
 	for (i = 0; i < n; i++)
-		palette[i] = p[i] ;
+		palette[i] = p[i & (NUMCOLOURS - 1)] ;
 
 	txtfor = colmsk & 7 ;
 	txtbak = 0 ;
@@ -1494,7 +1495,7 @@ static void plotns (unsigned char al, int cx, int cy)
 
 	case 9:		// PLOT 72-79, Fill left & right while background
 		grawin (&lx, &px, &ly, &py) ;
-		flooda (col, bakgnd >> 8, cx, cy, lx, px, cy, cy + pixely) ;
+		flooda (col, bakgnd >> 8, cx, cy, lx, px, cy, cy + (pixely & 0xFFFF)) ;
 		break ;
 
 	case 10:	// PLOT 80-87, Plot and fill triangle
@@ -1509,7 +1510,7 @@ static void plotns (unsigned char al, int cx, int cy)
 
 	case 11:	// PLOT 88-95, Fill right until background
 		grawin (&lx, &px, &ly, &py) ;
-		floodb (col, bakgnd >> 8, cx, cy, cx, px, cy, cy + pixely) ;
+		floodb (col, bakgnd >> 8, cx, cy, cx, px, cy, cy + (pixely & 0xFFFF)) ;
 		break ;
 
 	case 12:	// PLOT 96-103, Plot & fill rectangle
@@ -1526,7 +1527,7 @@ static void plotns (unsigned char al, int cx, int cy)
 
 	case 13:	// PLOT 104-111, Fill left & right until foreground
 		grawin (&lx, &px, &ly, &py) ;
-		floodb (col, forgnd >> 8, cx, cy, lx, px, cy, cy + pixely) ;
+		floodb (col, forgnd >> 8, cx, cy, lx, px, cy, cy + (pixely & 0xFFFF)) ;
 		break ;
 
 	case 14:	// PLOT 112-119, Plot & fill parallelogram
@@ -1543,7 +1544,7 @@ static void plotns (unsigned char al, int cx, int cy)
 
 	case 15:	// PLOT 120-127, Fill right while foreground
 		grawin (&lx, &px, &ly, &py) ;
-		flooda (col, forgnd >> 8, cx, cy, cx, px, cy, cy + pixely) ;
+		flooda (col, forgnd >> 8, cx, cy, cx, px, cy, cy + (pixely & 0xFFFF)) ;
 		break ;
 
 	case 16:	// PLOT 128-135, Flood fill while background
@@ -1664,9 +1665,12 @@ static void plot (char code, short xs, short ys)
 
 	if ((code & BIT2) != 0)
 	    {
-		*((unsigned char*)&pixelx + 3) = 0 ;
-		*((unsigned char*)&pixely + 3) = 0 ;
-		ascale (&xpos, &ypos) ;
+		xpos += origx ;
+		ypos += origy ;
+		*((unsigned char*)&pixelx + 3) = xpos & 1 ;
+		*((unsigned char*)&pixely + 3) = ypos & 1 ;
+		xpos = xpos >> 1 ;
+		ypos = sizey - 1 - (ypos >> 1) ;
 	    }
 	else
 	    {
@@ -1809,10 +1813,20 @@ static void defchr (unsigned char n, unsigned char a, unsigned char b,
 		break ;
 
 	case 1:		// cursor on/off
-		if (a)
-			cursa &= ~BIT5 ;
-		else
+		switch (a)
+		{
+		case 0:
 			cursa |= BIT5 ;
+			break ;
+		case 1:
+			cursa &= ~BIT5 ;
+			break ;
+		case 128:
+			cursa |= BIT7 ;
+			break ;
+		case 129:
+			cursa &= ~BIT7 ;
+		}
 		break ;
 
 	case 7:		// text scroll

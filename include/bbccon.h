@@ -1,15 +1,15 @@
 /******************************************************************\
 *       BBC BASIC Minimal Console Version                          *
-*       Copyright (c) R. T. Russell, 2000-2021                     *
+*       Copyright (c) R. T. Russell, 2000-2022                     *
 *                                                                  *
 *       bbccon.h constant definitions                              *
-*       Version v0.38, 16-Oct-2021                                 *
+*       Version v0.42, 22-Jul-2022                                 *
 \******************************************************************/
 
 // System constants :
 
-#define YEAR    "2021"          // Copyright year
-#define VERSION "v0.38"         // Version string
+#define YEAR    "2022"          // Copyright year
+#define VERSION "v0.41"         // Version string
 #ifdef PICO
 #define ACCSLEN 1024  // Must be the same in bbcsdl.h and bbccon.h
 #define DEFAULT_RAM PAGE_OFFSET+0x20000 // Initial amount of RAM to allocate
@@ -18,7 +18,11 @@
 #define DEFAULT_RAM PAGE_OFFSET+0x200000 // Initial amount of RAM to allocate
 #endif
 
+#if PICO_SOUND == 3
+#define PAGE_OFFSET ACCSLEN + 0x1C00     // Offset of PAGE from memory base
+#else
 #define PAGE_OFFSET ACCSLEN + 0x1300     // Offset of PAGE from memory base
+#endif
 #define MINIMUM_RAM PAGE_OFFSET+0x20000  // Minimum amount of RAM to allocate
 #define MAXIMUM_RAM 0x10000000  // Maximum amount of RAM to allocate
 
@@ -120,7 +124,13 @@ typedef struct tagFCB
 	signed char f ;   // bit0: offset<>0, bit7: written<>0
 } FCB, *LPFCB ;
 
-extern char colmsk ; 	// Mask for maximum number of colours
+typedef struct tagRND
+{
+	unsigned int l ;
+	unsigned char h ;
+} RND, *LPRND ;
+
+extern unsigned char colmsk ; 	// Mask for maximum number of colours
 extern unsigned char vflags ;	// VDU drivers flags byte
 extern signed char scroln ; 	// Scroll counter in paged mode
 extern unsigned char cmcflg ;
@@ -147,6 +157,7 @@ extern char *buff ;		// Temporary string buffer
 extern char* path ;		// File path buffer
 extern signed char *envels ;	// Envelope storage (16 x 16)
 extern short* waves ;
+extern int hwo ;
 extern void* filbuf[] ;
 extern FCB fcbtab[MAX_FILES] ;  // Table of FCBs
 extern unsigned char *keyptr ;	// Pointer to *KEY string
@@ -175,7 +186,7 @@ extern unsigned char evtqw ;	// Event queue write pointer
 extern unsigned char flags ;	// Interpreter flags byte
 extern int timoff ;		// TIME offset
 extern unsigned int lastick ;	// To test for TIME wrapping
-extern unsigned int prand ;	// Pseudo-random number
+extern RND prand ;		// Pseudo-random number
 extern int iMsg ;		// Event message number
 extern int wParam ;		// Event wParam value
 extern int lParam ;		// Event lParam value
