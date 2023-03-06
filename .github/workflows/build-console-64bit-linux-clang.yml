@@ -60,6 +60,7 @@ jobs:
         export LLVM_PROFILE_FILE="bbcbasic-%m.profraw" 
 
         echo QUIT | ./bbcbasic tests/ALLTESTS.bbc
+        ls -la tests
 
         echo Running llvm-profdata-${{env.CLANG_VER}}
         llvm-profdata-${{env.CLANG_VER}} merge -sparse -instr tests/bbcbasic-*.profraw -o bbcbasic.profdata
