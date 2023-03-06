@@ -39,7 +39,7 @@ jobs:
         tar -czf bbcsdl.tgz bbcsdl libstb.so install64.txt lib bbcsdl.bbc examples licence.txt
 
     - name: 'Upload Artifact'
-      uses: actions/upload-artifact@v2
+      uses: actions/upload-artifact@v3
       with:
         name: bbcsdl
         path: bbcsdl.tgz

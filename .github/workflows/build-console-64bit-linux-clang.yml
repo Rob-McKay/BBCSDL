@@ -36,7 +36,7 @@ jobs:
         tar -czf bbcbasic-console.tgz bbcbasic lib examples licence.txt tests
 
     - name: 'Upload Artifact'
-      uses: actions/upload-artifact@v2
+      uses: actions/upload-artifact@v3
       with:
         name: bbcbasic-console
         path: bbcbasic-console.tgz    
