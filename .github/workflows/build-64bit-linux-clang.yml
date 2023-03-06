@@ -10,7 +10,7 @@ jobs:
   build:
     runs-on: ubuntu-latest
     env:
-      CLANG_VER: 13
+      CLANG_VER: 15
 
     steps:
     - uses: actions/checkout@v2
