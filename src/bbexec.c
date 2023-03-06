@@ -1,12 +1,12 @@
 /*****************************************************************\
 *       32-bit or 64-bit BBC BASIC Interpreter                    *
-*       (C) 2017-2022  R.T.Russell  http://www.rtrussell.co.uk/   *
+*       (C) 2017-2023  R.T.Russell  http://www.rtrussell.co.uk/   *
 *                                                                 *
 *       The name 'BBC BASIC' is the property of the British       *
 *       Broadcasting Corporation and used with their permission   *
 *                                                                 *
 *       bbexec.c: Variable assignment and statement execution     *
-*       Version 1.31a, 11-Jun-2022                                *
+*       Version 1.34c, 01-Mar-2023                                *
 \*****************************************************************/
 
 #include <string.h>
@@ -3326,7 +3326,7 @@ VAR xeq (void)
 				PARM parm ;
 				void *ptr = NULL ;
 				unsigned char type = 0 ;
-				parm.f[0] = 0.0 ;
+				parm.f[0] = -1.7e308 ;
 				parm.i[0] = 0 ;
 
 				if (v.s.t == -1)
@@ -3522,9 +3522,10 @@ VAR xeq (void)
 					// Build structure descriptor:
 					if ((type == STYPE) && (*esi != '.'))
 					    {
+						volatile char *edi = pfree + (char *) zero ; // Emscripten
 						edx += 4 ; // room for structure size
 						ebx = structure ((void **)&edx) ; 
-						ISTORE(pfree + zero, ebx) ; // structure size
+						ISTORE(edi, ebx) ; // structure size
 					    }
 
 					// Build array descriptor above structure descriptor:

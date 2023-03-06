@@ -20,7 +20,7 @@ SDL_PATH := ../SDL
 
 LOCAL_C_INCLUDES := $(LOCAL_PATH)/$(SDL_PATH)/include
 
-LOCAL_LDLIBS := -lGLESv1_CM -lGLESv2 -llog
+LOCAL_LDLIBS := -lGLESv1_CM -lGLESv2 -lOpenSLES -llog -landroid
 
 ifeq ($(TARGET_ARCH),x86)
 

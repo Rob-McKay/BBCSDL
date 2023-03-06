@@ -1,12 +1,12 @@
 /*****************************************************************\
 *       32-bit or 64-bit BBC BASIC for SDL 2.0                    *
-*       (C) 2017-2022  R.T.Russell  http://www.rtrussell.co.uk/   *
+*       (C) 2017-2023  R.T.Russell  http://www.rtrussell.co.uk/   *
 *                                                                 *
 *       The name 'BBC BASIC' is the property of the British       *
 *       Broadcasting Corporation and used with their permission   *
 *                                                                 *
 *       bbcsdl.c Main program: Initialisation, Polling Loop       *
-*       Version 1.32a, 25-Jun-2022                                *
+*       Version 1.34b, 21-Feb-2023                                *
 \*****************************************************************/
 
 #include <stdlib.h>
@@ -83,6 +83,7 @@ unsigned int DIRoff = 19 ; // Used by Android x86-32 build
 
 // Performance tuning parameters:
 #define POLLT 2  // Poll for approaching vSync every 2 milliseconds 
+#define FGDLY 50 // Wait 50 * POLLT ms after returning to foreground
 #define BUSYT 40 // Busy-wait for 40 ms after last user output event
 #define PACER 12 // 12 ms 'processing time' per frame (max. ~75 fps)
 #define MAXEV 10 // Don't refresh display if > 10 waiting events ...
@@ -149,7 +150,9 @@ SDL_TimerID BlinkTimerID ;
 SDL_Event UserEvent ; // Used by Android x86-32 build
 SDL_Joystick * Joystick = NULL ;
 SDL_sem * Sema4 ;
+#ifdef MUTEX
 SDL_mutex * Mutex ;
+#endif
 SDL_sem * Idler ;
 int bBackground = 0 ;
 int bYield = 0 ;
@@ -232,9 +235,13 @@ static void *mymap (unsigned int size)
 static int BBC_PushEvent(SDL_Event* event)
 {
 	int ret ;
+#ifdef MUTEX
 	SDL_LockMutex (Mutex) ;
+#endif
 	ret = SDL_PushEvent (event) ;
+#ifdef MUTEX
 	SDL_UnlockMutex (Mutex) ;
+#endif
 	return ret ;
 }
 
@@ -283,6 +290,8 @@ static Uint32 PollTimerCallback(Uint32 interval, void *param)
 {
 	if (!SDL_SemValue(Idler))
 		SDL_SemPost (Idler) ;
+	if (bBackground < 0)
+		bBackground++ ;
 	return interval ;
 }
 
@@ -412,8 +421,9 @@ static void ShutDown ()
 	bBackground = 0 ;     // Worker thread may be waiting on bBackground
 	SDL_WaitThread (Thread, &i) ;
 	SDL_DestroySemaphore (Sema4) ;
+#ifdef MUTEX
 	SDL_DestroyMutex (Mutex) ; 
-
+#endif
 	SDL_RemoveTimer(PollTimerID) ;
 	SDL_RemoveTimer(UserTimerID) ;
 	SDL_RemoveTimer(BlinkTimerID) ;
@@ -434,9 +444,13 @@ static void ShutDown ()
 static int BBC_PeepEvents(SDL_Event* ev, int nev, SDL_eventaction action, Uint32 min, Uint32 max)
 {
 	int ret ;
+#ifdef MUTEX
 	SDL_LockMutex (Mutex) ;
+#endif
 	ret = SDL_PeepEvents (ev, nev, action, min, max) ;
+#ifdef MUTEX
 	SDL_UnlockMutex (Mutex) ;
+#endif
 	return ret ;
 }
 
@@ -451,14 +465,9 @@ static int myEventFilter(void* userdata, SDL_Event* pev)
 		case SDL_APP_DIDENTERBACKGROUND:
 		bBackground = 1 ;
 		break ;
-
-		case SDL_APP_DIDENTERFOREGROUND:
-		bBackground = 0 ;
-		bChanged = 1 ;
-		break ;
 	    }
 
-#ifdef __EMSCRIPTEN__
+#if defined __EMSCRIPTEN__ && defined MUTEX
 	if ((pev->type == SDL_USEREVENT) || (pev->type == SDL_WINDOWEVENT))
 		return 1;
 	BBC_PeepEvents (pev, 1, SDL_ADDEVENT, SDL_FIRSTEVENT, SDL_LASTEVENT) ;
@@ -522,7 +531,8 @@ if (platform < 0x2000200)
 #endif
 #ifdef __ANDROID__
 	platform |= 3 ;
-	fullscreen = 1 ;
+	if (!SDL_IsChromebook())
+		fullscreen = 1 ;
 #endif
 #ifdef __IPHONEOS__
 	platform |= 4 ;
@@ -707,13 +717,21 @@ SDL_SetTextureBlendMode(buttexture, SDL_BLENDMODE_BLEND) ;
 		userRAM = (char*) VirtualAlloc (pstrVirtual, DEFAULT_RAM,
 						MEM_COMMIT, PAGE_EXECUTE_READWRITE) ;
 
-#elif defined __APPLE__ || defined __EMSCRIPTEN__
+#elif defined __APPLE__
 
 	while ((MaximumRAM > DEFAULT_RAM) &&
 			((void*)-1 == (userRAM = mmap ((void *)0x10000000, MaximumRAM, 
 						PROT_EXEC | PROT_READ | PROT_WRITE, 
 						MAP_PRIVATE | MAP_ANON, -1, 0))) &&
 			((void*)-1 == (userRAM = mmap ((void *)0x10000000, MaximumRAM, 
+						PROT_READ | PROT_WRITE, 
+						MAP_PRIVATE | MAP_ANON, -1, 0))))
+		MaximumRAM /= 2 ;
+
+#elif defined __EMSCRIPTEN__
+
+	while ((MaximumRAM > DEFAULT_RAM) &&
+			((void*)-1 == (userRAM = mmap ((void *)0, MaximumRAM, 
 						PROT_READ | PROT_WRITE, 
 						MAP_PRIVATE | MAP_ANON, -1, 0))))
 		MaximumRAM /= 2 ;
@@ -899,8 +917,10 @@ if (argc >= 2)
 	strcpy (szAutoRun, "lib/autorun.bbc") ;
 #endif
 
+#ifdef MUTEX
 // Mutex (before first SDL_PeepEvents and timer creation):
 Mutex = SDL_CreateMutex () ;
+#endif
 
 SDL_EventState(SDL_DROPFILE, SDL_ENABLE);
 SDL_PumpEvents () ;
@@ -990,7 +1010,7 @@ memhdc = renderer ;
 keystate = SDL_GetKeyboardState(NULL) ;
 
 // Set up to monitor enter/exit background events:
-#ifdef __EMSCRIPTEN__
+#if defined __EMSCRIPTEN__ && defined MUTEX
 SDL_SetEventFilter(myEventFilter, 0) ;
 #else
 SDL_AddEventWatch(myEventFilter, 0) ;
@@ -1049,7 +1069,7 @@ static int maintick (void)
 #define PAINT2 (reflag & 1) // Interpreter thread is waiting for refresh (vSync)
 #define PAINT3 ((unsigned int)(now - lastpaint) >= MAXFP) // Fallback minimum frame rate
 
-	if ((reflag != 2) && (PAINT1 || PAINT2 || PAINT3) && 
+	if ((reflag != 2) && (PAINT1 || PAINT2 || PAINT3) && (bBackground == 0) &&
 	    (bChanged || (reflag & 1) || (textx != oldtextx) || (texty != oldtexty)))
 	    {
 		SDL_Rect SrcRect ;
@@ -1111,9 +1131,13 @@ static int maintick (void)
 
 	if ((unsigned int)(now - lastpump) >= PUMPT)
 	    {
+#ifdef MUTEX
 		SDL_LockMutex (Mutex) ;
+#endif
 		SDL_PumpEvents() ;
+#ifdef MUTEX
 		SDL_UnlockMutex (Mutex) ;
+#endif
 		lastpump = SDL_GetTicks() ;
 	    }
 
@@ -1600,6 +1624,8 @@ static int maintick (void)
 			break ;
 
 		case SDL_APP_DIDENTERFOREGROUND:
+			bBackground = -FGDLY ;
+			bChanged = 1 ;
 			if (siztrp)
 			{
 				// Signal 'restored from background'
@@ -1610,12 +1636,12 @@ static int maintick (void)
 
 		case SDL_RENDER_DEVICE_RESET:
 			{
+				int w, h ;
 				SDL_Texture **p ;
-				SDL_GL_GetDrawableSize (window, &sizex, &sizey) ;
-				int size = MAX (sizex, sizey) ;
+				SDL_GL_GetDrawableSize (window, &w, &h) ;
 				SDL_SetRenderTarget(renderer, SDL_CreateTexture(renderer, 
 					SDL_PIXELFORMAT_ABGR8888, SDL_TEXTUREACCESS_TARGET,
-					MAX(size,XSCREEN), MAX(size,YSCREEN))) ;
+					MAX(MAX(w,h),XSCREEN), MAX(MAX(w,h),YSCREEN))) ;
 				for (p = TTFcache; p < TTFcache + 65536; p++)
 					*p = NULL ;
 			}

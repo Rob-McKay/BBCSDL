@@ -8,7 +8,7 @@ public class BBCBasic extends SDLActivity
         return new String[] {
             "c++_shared",
             "Box2D",
-            "hidapi",
+            // "hidapi",
             "SDL2",
             // "SDL2_image",
             // "SDL2_mixer",
@@ -16,5 +16,12 @@ public class BBCBasic extends SDLActivity
             "SDL2_ttf",
             "main"
         };
+    }
+
+    /**
+     * Override so that BBC2APK can set orientation in manifest
+     */
+    public void setOrientationBis(int w, int h, boolean resizable, String hint)
+    {
     }
 }
