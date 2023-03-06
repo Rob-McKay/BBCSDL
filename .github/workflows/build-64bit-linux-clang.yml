@@ -10,7 +10,7 @@ jobs:
   build:
     runs-on: ubuntu-latest
     env:
-      CLANG_VER: 13
+      CLANG_VER: 15
 
     steps:
     - uses: actions/checkout@v2
@@ -25,8 +25,8 @@ jobs:
     - name: make
       run: |
         cd bin/linux
-        sed '/^.*CXX .*$/d' makefile >makefile.clang
-        export CXX="clang-${{env.CLANG_VER}} -Wall -Wextra -Wpedantic -Wformat=2 -Wno-sign-compare -Wno-pointer-arith -std=c11 -Wno-strict-prototypes -Wold-style-definition -Dintptr_t=__intptr_t -Dasm=__asm -I ../../include"
+        sed '/^.*CC .*$/d' makefile >makefile.clang
+        export CC="clang-${{env.CLANG_VER}} -Wall -Wextra -Wpedantic -Wformat=2 -Wno-sign-compare -Wno-pointer-arith -std=c11 -Wno-strict-prototypes -Wold-style-definition -Dintptr_t=__intptr_t -Dasm=__asm -I ../../include"
         make --file=makefile.clang
 
     - name: Copy readme etc
@@ -42,5 +42,5 @@ jobs:
       uses: actions/upload-artifact@v2
       with:
         name: bbcsdl
-        path: bbcsdl.tgz    
-      
+        path: bbcsdl.tgz
+        

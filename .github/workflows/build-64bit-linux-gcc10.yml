@@ -1,0 +1,44 @@
+name: Build BBC Console linux 64 bit GCC 10
+
+on:
+  push:
+    branches: [ master ]
+  pull_request:
+    branches: [ master ]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    env:
+      GCC_VER: 10
+
+    steps:
+    - uses: actions/checkout@v2
+    
+    - name: Install Dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install nasm
+        
+    - name: make
+      run: |
+        cd console/linux
+        sed '/^.*CXX .*$/d' makefile >makefile.no-cxx
+        export CXX="gcc-${{env.GCC_VER}} -Wall -Wextra -Wpedantic -Wno-pointer-arith -Wno-sign-compare -Wno-unused-parameter -Wno-implicit-fallthrough -std=gnu11 -Wstrict-prototypes -Wold-style-definition -I ../../include -I ../../../BBCSDL/include"
+        make --file=makefile.no-cxx
+
+    - name: 'Tar files'
+      run: |
+        ls -la
+        tar -czf bbcbasic-console-gcc${{env.GCC_VER}}.tgz bbcbasic lib examples licence.txt tests
+
+    - name: 'Upload Artifact'
+      uses: actions/upload-artifact@v2
+      with:
+        name: bbcbasic-console-gcc${{env.GCC_VER}}
+        path: bbcbasic-console-gcc${{env.GCC_VER}}.tgz    
+      
+    - name: 'Run Tests'
+      run: |
+        echo QUIT | ./bbcbasic tests/ALLTESTS.bbc
+        
