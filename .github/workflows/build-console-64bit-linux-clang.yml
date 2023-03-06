@@ -25,7 +25,7 @@ jobs:
     - name: make
       run: |
         cd console/linux
-        sed '/^.*(CXX|CC) .*$/d' makefile >makefile.clang
+        sed '/^.*CXX .*$/d' makefile >makefile.clang
         cat makefile.clang
         export CXX="clang-${{env.CLANG_VER}} -Wall -Wextra -Wpedantic -Wno-pointer-arith -Wno-sign-compare -Wno-unused-parameter -Wno-gnu-case-range -Wno-gnu-binary-literal -std=c11 -Wstrict-prototypes -Wold-style-definition -I ../../include -I ../../../BBCSDL/include -Dasm=__asm -Dintptr_t=__intptr_t -fprofile-instr-generate -fcoverage-mapping -g "
         export CC="clang-${{env.CLANG_VER}} -Wall -Wextra -Wpedantic -Wno-pointer-arith -Wno-sign-compare -Wno-unused-parameter -Wno-gnu-case-range -Wno-gnu-binary-literal -std=c11 -Wstrict-prototypes -Wold-style-definition -I ../../include -I ../../../BBCSDL/include -Dasm=__asm -Dintptr_t=__intptr_t -fprofile-instr-generate -fcoverage-mapping -g "
@@ -61,7 +61,7 @@ jobs:
 
         echo QUIT | ./bbcbasic tests/ALLTESTS.bbc
         ls -la tests
-        ls -la *.profraw
+        ls -la 
 
         echo Running llvm-profdata-${{env.CLANG_VER}}
         llvm-profdata-${{env.CLANG_VER}} merge -sparse -instr tests/bbcbasic-*.profraw -o bbcbasic.profdata
