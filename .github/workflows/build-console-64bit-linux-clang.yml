@@ -13,7 +13,7 @@ jobs:
       CLANG_VER: 15
 
     steps:
-    - uses: actions/checkout@v2
+    - uses: actions/checkout@v3
     
     - name: Install Dependencies
       run: |
@@ -30,16 +30,21 @@ jobs:
         export CC="clang-${{env.CLANG_VER}} -Wall -Wextra -Wpedantic -Wno-pointer-arith -Wno-sign-compare -Wno-unused-parameter -Wno-gnu-case-range -Wno-gnu-binary-literal -std=c11 -Wstrict-prototypes -Wold-style-definition -I ../../include -I ../../../BBCSDL/include -Dasm=__asm -Dintptr_t=__intptr_t -fprofile-instr-generate -fcoverage-mapping -g "
         make --file=makefile.clang
 
-    - name: 'Tar files'
-      run: |
-        ls -la
-        tar -czf bbcbasic-console.tgz bbcbasic lib examples licence.txt tests
+#    - name: 'Tar files'
+#      run: |
+#        ls -la
+#        tar -czf bbcbasic-console.tgz bbcbasic lib licence.txt tests
 
+      # upload-artifact automatically creates a zip file.
     - name: 'Upload Artifact'
       uses: actions/upload-artifact@v3
       with:
         name: bbcbasic-console
-        path: bbcbasic-console.tgz    
+        path: |
+          bbcbasic
+          lib/
+          licence.txt
+          tests/
       
     - name: 'Run Tests'
       run: |
@@ -67,5 +72,9 @@ jobs:
         llvm-cov-${{env.CLANG_VER}} show -show-regions -format=html -output-dir=coverage -instr-profile=bbcbasic.profdata ./bbcbasic
         llvm-cov-${{env.CLANG_VER}} report ./bbcbasic -instr-profile=bbcbasic.profdata
 
-        tar -czf bbcbasic-console-coverage.tgz coverage/
+    - name: 'Upload Coverage'
+      uses: actions/upload-artifact@v3
+      with:
+        name: bbcbasic-console-coverage
+        path: coverage/
         
