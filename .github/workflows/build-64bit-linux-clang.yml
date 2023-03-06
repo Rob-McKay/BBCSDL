@@ -42,5 +42,5 @@ jobs:
       uses: actions/upload-artifact@v2
       with:
         name: bbcsdl
-        path: bbcsdl.tgz    
-      
+        path: bbcsdl.tgz
+        
