@@ -1,9 +1,9 @@
 /******************************************************************\
 *       BBC BASIC for SDL 2.0 (64-bit)                             *
-*       Copyright (c) R. T. Russell, 2000-2021                     *
+*       Copyright (c) R. T. Russell, 2000-2022                     *
 *                                                                  *
 *       BBCSDL.H constant definitions                              *
-*       Version 1.25a 21-Aug-2021                                  *
+*       Version 1.29a 03-Apr-2022                                  *
 \******************************************************************/
 
 // System constants :
@@ -143,6 +143,12 @@ typedef struct tagFCB
 	signed char f ;   // bit0: offset<>0, bit7: written<>0
 } FCB, *LPFCB ;
 
+typedef struct tagRND
+{
+	unsigned int l ;
+	unsigned char h ;
+} RND, *LPRND ;
+
 // Variables declared in bbcsdl.c:
 extern SDL_Renderer *memhdc ;
 extern SDL_Window *hwndProg ;
@@ -172,15 +178,15 @@ extern int texty ; 	// Text caret y-position (pixels)
 extern TTF_Font *hfont ;// Handle of current font
 extern SDL_Rect *hrect ;// Pointer to clipping rect
 
-extern short forgnd ; 	// Graphics foreground colour/action
-extern short bakgnd ;	// Graphics background colour/action
+extern unsigned short forgnd ; 	// Graphics foreground colour/action
+extern unsigned short bakgnd ;	// Graphics background colour/action
 
 extern unsigned char cursa ; 	// Start (top) line of caret
 extern unsigned char cursb ; 	// Finish (bottom) line of caret
-extern char txtfor ; 	// Text foreground colour index
-extern char txtbak ; 	// Text background colour index
+extern unsigned char txtfor ; 	// Text foreground colour index
+extern unsigned char txtbak ; 	// Text background colour index
 extern signed char modeno ; 	// Mode number (can be -1)
-extern char colmsk ; 	// Mask for maximum number of colours
+extern unsigned char colmsk ; 	// Mask for maximum number of colours
 extern unsigned char vflags ;	// VDU drivers flags byte
 extern signed char scroln ; 	// Scroll counter in paged mode
 
@@ -251,7 +257,7 @@ extern unsigned char evtqw ;	// Event queue write pointer
 extern unsigned char flags ;	// Interpreter flags byte
 extern int timoff ;		// TIME offset
 extern int lastick ;		// To test for TIME wrapping
-extern unsigned int prand ;	// Pseudo-random number
+extern RND prand ;		// Pseudo-random number
 extern int iMsg ;		// Event message number
 extern int wParam ;		// Event wParam value
 extern int lParam ;		// Event lParam value

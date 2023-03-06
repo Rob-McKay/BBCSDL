@@ -1,10 +1,10 @@
 # Update these paths as necessary to match your installation
-SDL_LIB = -LC:/SDL2-2.0.10/x86_64-w64-mingw32/lib -lSDL2main -lSDL2 \
-          -LC:/SDL2_ttf-2.0.15/x86_64-w64-mingw32/lib -lSDL2_ttf \
-          -LC:/SDL2_net-2.0.1/x86_64-w64-mingw32/lib -lSDL2_net 
-SDL_INCLUDE = -IC:/SDL2-2.0.10/x86_64-w64-mingw32/include/ \
-          -IC:/SDL2_ttf-2.0.15/x86_64-w64-mingw32/include/ \
-          -IC:/SDL2_net-2.0.1/x86_64-w64-mingw32/include/
+SDL_LIB = -LC:/SDL2-2.26.2/x86_64-w64-mingw32/lib -lSDL2main -lSDL2 \
+          -LC:/SDL2_ttf-2.20.1/x86_64-w64-mingw32/lib -lSDL2_ttf \
+          -LC:/SDL2_net-2.2.0/x86_64-w64-mingw32/lib -lSDL2_net 
+SDL_INCLUDE = -IC:/SDL2-2.26.2/x86_64-w64-mingw32/include/ \
+          -IC:/SDL2_ttf-2.20.1/x86_64-w64-mingw32/include/ \
+          -IC:/SDL2_net-2.2.0/x86_64-w64-mingw32/include/
 
 VPATH = ../../src ../../include
 CXX = gcc -Wall -I ../../include
@@ -16,13 +16,13 @@ OBJ = bbmain.o bbexec.o bbeval.o bbcmos.o bbccli.o \
 all: bbcsdl.exe
 
 bbmain.o: bbmain.c BBC.h
-	$(CXX) -c -O2 $< -o $@
+	$(CXX) -c -O2 -freg-struct-return -ffast-math -fno-finite-math-only $< -o $@
 
 bbexec.o: bbexec.c BBC.h
-	$(CXX) -c -O2 $< -o $@
+	$(CXX) -c -O2 -freg-struct-return -ffast-math -fno-finite-math-only $< -o $@
 
 bbeval.o: bbeval.c BBC.h
-	$(CXX) -Wno-array-bounds -c -O2 $< -o $@
+	$(CXX) -Wno-array-bounds -c -O2 -freg-struct-return -ffast-math -fno-finite-math-only $< -o $@
 
 bbasmb.o: bbasmb_x86_64.c BBC.h
 	$(CXX) -c -Os $< -o $@
@@ -56,4 +56,4 @@ bbdata.o: ../../src/bbdata_x86_64.nas
 
 bbcsdl.exe: $(OBJ)
 	$(CXX) $(OBJ) \
-	-o bbcsdl.exe -lmingw32 -mthreads -mwindows $(SDL_LIB) -Wl,-s -Wl,--export-all-symbols
+	-o bbcsdl.exe -lz -lmingw32 -mthreads -mwindows $(SDL_LIB) -Wl,-s -Wl,--export-all-symbols

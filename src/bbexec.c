@@ -1,12 +1,12 @@
 /*****************************************************************\
 *       32-bit or 64-bit BBC BASIC Interpreter                    *
-*       (C) 2017-2021  R.T.Russell  http://www.rtrussell.co.uk/   *
+*       (C) 2017-2023  R.T.Russell  http://www.rtrussell.co.uk/   *
 *                                                                 *
 *       The name 'BBC BASIC' is the property of the British       *
 *       Broadcasting Corporation and used with their permission   *
 *                                                                 *
 *       bbexec.c: Variable assignment and statement execution     *
-*       Version 1.26a, 19-Nov-2021                                *
+*       Version 1.34c, 01-Mar-2023                                *
 \*****************************************************************/
 
 #include <string.h>
@@ -214,9 +214,10 @@ void storen (VAR v, void *ptr, unsigned char type)
 			if (v.i.t == 0)
 				v.f = v.i.n ;
 			v.d.d = v.f ;
-			// *(int *)ptr = (int) v.s.p ;
-			// *(int *)((char *)ptr + 4) = v.s.l ;
-			memcpy (ptr, &v.s.p, 8) ; // may be unaligned
+			if ((v.s.l == 0x7FF00000) || (v.s.l == 0xFFF00000))
+				error (20, NULL) ; // 'Number too big'
+			USTORE(ptr, v.s.p) ;
+			USTORE((char *)ptr + 4, v.s.l) ;
 			}
 			break ;
 
@@ -2169,7 +2170,6 @@ VAR xeq (void)
 				VAR v ;
 				unsigned char mode = 0 ;
 				int field = stavar[0] & 0xFF ;
-				if (field == 0) field = 10 ;
 
 				while (1)
 				    {
@@ -2192,7 +2192,7 @@ VAR xeq (void)
 					    {
 						mode &= ~2 ;
 						field = stavar[0] & 0xFF ;
-						if (field == 0) field = 10 ;
+						if (field)
 						while (vcount % field)
 							outchr (' ') ;
 					    }
@@ -3326,7 +3326,7 @@ VAR xeq (void)
 				PARM parm ;
 				void *ptr = NULL ;
 				unsigned char type = 0 ;
-				parm.f[0] = 0.0 ;
+				parm.f[0] = -1.7e308 ;
 				parm.i[0] = 0 ;
 
 				if (v.s.t == -1)
@@ -3522,9 +3522,10 @@ VAR xeq (void)
 					// Build structure descriptor:
 					if ((type == STYPE) && (*esi != '.'))
 					    {
+						volatile char *edi = pfree + (char *) zero ; // Emscripten
 						edx += 4 ; // room for structure size
 						ebx = structure ((void **)&edx) ; 
-						ISTORE(pfree + zero, ebx) ; // structure size
+						ISTORE(edi, ebx) ; // structure size
 					    }
 
 					// Build array descriptor above structure descriptor:

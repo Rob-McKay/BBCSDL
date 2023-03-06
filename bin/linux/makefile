@@ -11,7 +11,7 @@ SDL_LIB = -L/usr/include -lSDL2 -lSDL2main -lSDL2_ttf -lSDL2_net -ldl -lm
 LBITS := $(shell getconf LONG_BIT)
 
 VPATH = ../../src ../../include
-CXX = gcc -Wall -I ../../include
+CXX = gcc -Wall -pthread -I ../../include
 
 OBJ = bbmain.o bbexec.o bbeval.o bbcmos.o bbccli.o \
       bbcvdu.o bbcvtx.o flood.o bbdata.o bbcsdl.o \
@@ -20,13 +20,13 @@ OBJ = bbmain.o bbexec.o bbeval.o bbcmos.o bbccli.o \
 all: bbcsdl
 
 bbmain.o: bbmain.c BBC.h
-	$(CXX) -c -O2 $< -o $@
+	$(CXX) -c -O2 -freg-struct-return -ffast-math -fno-finite-math-only $< -o $@
 
 bbexec.o: bbexec.c BBC.h
-	$(CXX) -c -O2 $< -o $@
+	$(CXX) -c -O2 -freg-struct-return -ffast-math -fno-finite-math-only $< -o $@
 
 bbeval.o: bbeval.c BBC.h
-	$(CXX) -Wno-array-bounds -c -O2 $< -o $@
+	$(CXX) -Wno-array-bounds -c -O2 -freg-struct-return -ffast-math -fno-finite-math-only $< -o $@
 
 bbasmb.o: bbasmb_x86_64.c BBC.h
 	$(CXX) -c -Os $< -o $@
@@ -67,7 +67,7 @@ libstb.so: SDL2_rotozoom.o
 	$(CXX) -shared -o libstb.so SDL2_rotozoom.o
 
 bbcsdl: $(OBJ) libstb.so
-	$(CXX) $(OBJ) -lstb -L . \
+	$(CXX) $(OBJ) -lz -lstb -L . \
 	-o bbcsdl $(SDL_LIB) -Wl,-s -Wl,-R,'$$ORIGIN'
 	cp bbcsdl ../../
 	cp libstb.so ../../

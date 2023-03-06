@@ -1,9 +1,9 @@
 /******************************************************************\
 *       BBC BASIC for SDL 2.0 (32-bits or 64-bits)                 *
-*       Copyright (c) R. T. Russell, 2000-2021                     *
+*       Copyright (c) R. T. Russell, 2000-2023                     *
 *                                                                  *
 *       BBC.h constant, variable and structure declarations        *
-*       Version 1.26a, 08-Nov-2021                                 *
+*       Version 1.34b, 20-Feb-2023                                 *
 \******************************************************************/
 
 // Constants:
@@ -232,7 +232,7 @@ typedef struct tagPARM
 // to force the type word (.i.t or .s.t member) to a value other than 0 or -1. 
 typedef union __attribute__ ((packed)) __attribute__ ((aligned (4))) tagVAR
 {
-#if defined(__arm__) || defined(__aarch64__) || defined(__EMSCRIPTEN__)
+#if defined __arm__ || defined __aarch64__ || defined __EMSCRIPTEN__ || defined __ANDROID__
 	double f ;
 #else
         long double f ;
@@ -261,6 +261,12 @@ typedef struct __attribute__ ((packed)) __attribute__ ((aligned (4))) tagSTR
 	heapptr p ; // Assumed to be 32 bits
 	int l ;
 } STR, *LPSTR ;
+
+typedef struct tagRND
+{
+	unsigned int l ;
+	unsigned char h ;
+} RND, *LPRND ;
 
 // Structure for linked list of string free space
 struct node
@@ -344,7 +350,7 @@ extern unsigned char evtqr ;	// Event queue read pointer
 extern void *sysvar ;		// Start of @ variables linked list
 extern unsigned short tracen ;	// TRACE maximum line number
 extern unsigned char flags ;	// BASIC's Boolean flags byte
-extern unsigned int prand ;	// Pseudo-random number
+extern RND prand ;		// Pseudo-random number
 extern unsigned char fvtab[] ;	// Table of 'fast' variable types
 extern char modeno ;		// MODE number
 extern size_t memhdc ;		// SDL Renderer

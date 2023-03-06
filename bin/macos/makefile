@@ -6,7 +6,7 @@
 SDL_LIB = -L/usr/include -ldl -lm
 
 VPATH = ../../src ../../include
-CXX = gcc -Wall -mmacosx-version-min=10.6 -I ../../include
+CXX = gcc -Wall -pthread -mmacosx-version-min=10.6 -I ../../include
 
 OBJ = bbmain.o bbexec.o bbeval.o bbcmos.o bbccli.o \
       bbcvdu.o bbcvtx.o flood.o bbdata.o bbcsdl.o \
@@ -15,13 +15,13 @@ OBJ = bbmain.o bbexec.o bbeval.o bbcmos.o bbccli.o \
 all: bbcsdl
 
 bbmain.o: bbmain.c BBC.h
-	$(CXX) -c -O2 $< -o $@
+	$(CXX) -c -O2 -ffast-math -fno-finite-math-only $< -o $@
 
 bbexec.o: bbexec.c BBC.h
-	$(CXX) -c -O2 $< -o $@
+	$(CXX) -c -O2 -ffast-math -fno-finite-math-only $< -o $@
 
 bbeval.o: bbeval.c BBC.h
-	$(CXX) -Wno-array-bounds -c -O2 $< -o $@
+	$(CXX) -Wno-array-bounds -c -O2 -ffast-math -fno-finite-math-only $< -o $@
 
 bbasmb.o: bbasmb_x86_64.c BBC.h
 	$(CXX) -c -Os $< -o $@
@@ -61,7 +61,7 @@ libstb.dylib: SDL2_rotozoom.o SDL2_gfxPrimitives.o
 	-o libstb.dylib SDL2_rotozoom.o SDL2_gfxPrimitives.o
 
 bbcsdl: $(OBJ) libstb.dylib
-	$(CXX) $(OBJ) -lstb -F/Library/Frameworks -L . \
+	$(CXX) $(OBJ) -lz -lstb -F/Library/Frameworks -L . \
 	-framework SDL2 -framework SDL2_ttf -framework SDL2_net \
 	-framework Foundation -Wl,-headerpad_max_install_names \
 	-o bbcsdl $(SDL_LIB)

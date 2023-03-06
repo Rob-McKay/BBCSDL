@@ -1,12 +1,12 @@
 /*****************************************************************\
 *       32-bit BBC BASIC Interpreter (Emscripten / Web Assembly)  *
-*       (c) 2018-2021  R.T.Russell  http://www.rtrussell.co.uk/   *
+*       (c) 2018-2023  R.T.Russell  http://www.rtrussell.co.uk/   *
 *                                                                 *
 *       The name 'BBC BASIC' is the property of the British       *
 *       Broadcasting Corporation and used with their permission   *
 *                                                                 *
 *       bbasmb.c: API Wrappers to satisfy function signatures     *
-*       Version 1.26a, 17-Nov-2021                                *
+*       Version 1.34a, 26-Jan-2023                                *
 \*****************************************************************/
 
 #include <stdlib.h>
@@ -39,6 +39,8 @@ typedef struct
 // External routines:
 void error (int, const char *) ;
 void stbi_set_flip_vertically_on_load(int) ;
+unsigned char* stbi_load_gif_from_memory(const unsigned char*, int, int**, int*, int*, int*, int*, int);
+void stbi_image_free(void*);
 float* drmp3_open_file_and_read_f32 (const char*, drmp3_config*, uint64_t *) ;
 void drmp3dec_f32_to_s16 (const float*, int16_t *, int) ;
 void drmp3_free (void*) ;
@@ -183,6 +185,10 @@ long long BBC_RenderCopy(st renderer, st texture, st srcrect, st dstrect, st i4,
 	  st i8, st i9, st i10, st i11, db f0, db f1, db f2, db f3, db f4, db f5, db f6, db f7)
 	{ return SDL_RenderCopy((SDL_Renderer*) renderer, (SDL_Texture*) texture, (const SDL_Rect*) srcrect, (const SDL_Rect*) dstrect); }
 
+long long BBC_RenderCopyF(st renderer, st texture, st srcrect, st dstrect, st i4, st i5, st i6, st i7,
+	  st i8, st i9, st i10, st i11, db f0, db f1, db f2, db f3, db f4, db f5, db f6, db f7)
+	{ return SDL_RenderCopyF((SDL_Renderer*) renderer, (SDL_Texture*) texture, (const SDL_Rect*) srcrect, (const SDL_FRect*) dstrect); }
+
 long long BBC_SetRenderDrawBlendMode(st renderer, st mode, st i2, st i3, st i4, st i5, st i6, st i7,
 	  st i8, st i9, st i10, st i11, db f0, db f1, db f2, db f3, db f4, db f5, db f6, db f7)
 	{ return SDL_SetRenderDrawBlendMode((SDL_Renderer*) renderer, mode); }
@@ -243,6 +249,11 @@ long long BBC_RenderDrawLines(st renderer, st points, st count, st i3, st i4, st
 	  st i8, st i9, st i10, st i11, db f0, db f1, db f2, db f3, db f4, db f5, db f6, db f7)
 	{ return SDL_RenderDrawLines((SDL_Renderer*) renderer, (const SDL_Point*) points, count); }
 
+long long BBC_RenderGeometry(st renderer, st texture, st vertices, st num_ver, st indices, st num_ind, st i6, st i7,
+	  st i8, st i9, st i10, st i11, db f0, db f1, db f2, db f3, db f4, db f5, db f6, db f7)
+	{ return SDL_RenderGeometry((SDL_Renderer*) renderer, (SDL_Texture*) texture,
+		       (const SDL_Vertex*) vertices, num_ver, (const int*) indices, num_ind); }
+
 long long WASM_RenderReadPixels(st renderer, st rect, st format, st pixels, st pitch, st i5, st i6, st i7,
 	  st i8, st i9, st i10, st i11, db f0, db f1, db f2, db f3, db f4, db f5, db f6, db f7)
 	{ return SDL_RenderReadPixels((SDL_Renderer*) renderer, (const SDL_Rect*) rect, format, (void*) pixels, pitch); }
@@ -294,6 +305,15 @@ long long BBC_SetPaletteColors(st palette, st colors, st first, st ncolors, st i
 long long BBC_stbi_set_flip_vertically_on_load(st flip, st i1, st i2, st i3, st i4, st i5, st i6, st i7,
 	  st i8, st i9, st i10, st i11, db f0, db f1, db f2, db f3, db f4, db f5, db f6, db f7)
 	{ stbi_set_flip_vertically_on_load(flip); return 0; }
+
+long long BBC_stbi_load_gif_from_memory(st buffer, st len, st delays, st x, st y, st z, st comp, st req_comp,
+	  st i8, st i9, st i10, st i11, db f0, db f1, db f2, db f3, db f4, db f5, db f6, db f7)
+	{ return (intptr_t) stbi_load_gif_from_memory((const unsigned char*) buffer, len, (int**) delays,
+						     (int*) x, (int*) y, (int*) z, (int*) comp, req_comp); }
+
+long long BBC_stbi_image_free(st buffer, st i1, st i2, st i3, st i4, st i5, st i6, st i7,
+	  st i8, st i9, st i10, st i11, db f0, db f1, db f2, db f3, db f4, db f5, db f6, db f7)
+	{ stbi_image_free((void*) buffer); return 0; }
 
 // 3D (OpenGL) graphics:
 
@@ -442,6 +462,10 @@ long long BBC_HasIntersection(st recta, st rectb, st i2, st i3, st i4, st i5, st
 	  st i8, st i9, st i10, st i11, db f0, db f1, db f2, db f3, db f4, db f5, db f6, db f7)
 	{ return SDL_HasIntersection((const SDL_Rect*) recta, (const SDL_Rect*) rectb); }
 
+long long BBC_IntersectRectAndLine(st rect, st X1, st Y1, st X2, st Y2, st i5, st i6, st i7,
+	  st i8, st i9, st i10, st i11, db f0, db f1, db f2, db f3, db f4, db f5, db f6, db f7)
+	{ return SDL_IntersectRectAndLine((const SDL_Rect*) rect, (int*) X1, (int*) Y1, (int*) X2, (int*) Y2); }
+
 long long BBC_SetHint(st name, st value, st i2, st i3, st i4, st i5, st i6, st i7,
 	  st i8, st i9, st i10, st i11, db f0, db f1, db f2, db f3, db f4, db f5, db f6, db f7)
 	{ return SDL_SetHint((const char*) name, (const char*) value); }
@@ -466,9 +490,25 @@ long long BBC_RWFromFile(st file, st mode, st i2, st i3, st i4, st i5, st i6, st
 	  st i8, st i9, st i10, st i11, db f0, db f1, db f2, db f3, db f4, db f5, db f6, db f7)
 	{ return (intptr_t) SDL_RWFromFile((const char*) file, (const char*) mode); }
 
+long long BBC_RWread(st context, st ptr, st size, st maxnum, st i4, st i5, st i6, st i7,
+	  st i8, st i9, st i10, st i11, db f0, db f1, db f2, db f3, db f4, db f5, db f6, db f7)
+	{ return SDL_RWread((SDL_RWops*)context, (void*)ptr, size, maxnum); }
+
+long long BBC_RWwrite(st context, st ptr, st size, st num, st i4, st i5, st i6, st i7,
+	  st i8, st i9, st i10, st i11, db f0, db f1, db f2, db f3, db f4, db f5, db f6, db f7)
+	{ return SDL_RWwrite((SDL_RWops*)context, (void*)ptr, size, num); }
+
 long long BBC_ShowSimpleMessageBox(st flgs, st title, st message, st window, st i4, st i5, st i6, st i7,
 	  st i8, st i9, st i10, st i11, db f0, db f1, db f2, db f3, db f4, db f5, db f6, db f7)
 	{ return SDL_ShowSimpleMessageBox(flgs, (const char*) title, (const char*) message, (SDL_Window*) window); }
+
+long long BBC_GetPerformanceCounter(st i0, st i1, st i2, st i3, st i4, st i5, st i6, st i7,
+	  st i8, st i9, st i10, st i11, db f0, db f1, db f2, db f3, db f4, db f5, db f6, db f7)
+	{ return SDL_GetPerformanceCounter(); }
+
+long long BBC_GetPerformanceFrequency(st i0, st i1, st i2, st i3, st i4, st i5, st i6, st i7,
+	  st i8, st i9, st i10, st i11, db f0, db f1, db f2, db f3, db f4, db f5, db f6, db f7)
+	{ return SDL_GetPerformanceFrequency(); }
 
 long long BBC_malloc(st size, st i1, st i2, st i3, st i4, st i5, st i6, st i7,
 	  st i8, st i9, st i10, st i11, db f0, db f1, db f2, db f3, db f4, db f5, db f6, db f7)
@@ -566,7 +606,7 @@ long long BBC_emscripten_async_wget(st url, st file, st i2, st i3, st i4, st i5,
 	return 0 ;
 }
 
-#define NSYS 117
+#define NSYS 126
 #define POW2 128 // smallest power-of-2 >= NSYS
 
 static const char *sysname[NSYS] = {
@@ -622,11 +662,14 @@ static const char *sysname[NSYS] = {
 	"SDL_GL_SetSwapInterval",
 	"SDL_GL_SwapWindow",
 	"SDL_GetDisplayUsableBounds",
+	"SDL_GetPerformanceCounter",
+	"SDL_GetPerformanceFrequency",
 	"SDL_GetQueuedAudioSize",
 	"SDL_GetRenderTarget",
 	"SDL_GetTicks",
 	"SDL_GetWindowFlags",
 	"SDL_HasIntersection",
+	"SDL_IntersectRectAndLine",
 	"SDL_LoadBMP_RW",
 	"SDL_LoadWAV_RW",
 	"SDL_LockAudioDevice",
@@ -638,11 +681,14 @@ static const char *sysname[NSYS] = {
 	"SDL_QueueAudio",
 	"SDL_RWFromFile",
 	"SDL_RWFromMem",
+	"SDL_RWread",
+	"SDL_RWwrite",
 	"SDL_RemoveTimer",
 	"SDL_RenderClear",
 	"SDL_RenderCopy",
 	"SDL_RenderCopyEx",
 	"SDL_RenderCopyExF",
+	"SDL_RenderCopyF",
 	"SDL_RenderDrawLine",
 	"SDL_RenderDrawLines",
 	"SDL_RenderDrawPoint",
@@ -650,6 +696,7 @@ static const char *sysname[NSYS] = {
 	"SDL_RenderFillRect",
 	"SDL_RenderFillRects",
 	"SDL_RenderFlush",
+	"SDL_RenderGeometry",
 	"SDL_RenderReadPixels",
 	"SDL_RenderSetClipRect",
 	"SDL_SetColorKey",
@@ -685,6 +732,8 @@ static const char *sysname[NSYS] = {
 	"gmtime",
 	"localtime",
 	"mktime",
+	"stbi_image_free",
+	"stbi_load_gif_from_memory",
 	"stbi_set_flip_vertically_on_load",
 	"time"} ;
 
@@ -741,11 +790,14 @@ static void *sysfunc[NSYS] = {
 	BBC_GL_SetSwapInterval,
 	BBC_GL_SwapWindow,
 	BBC_GetDisplayUsableBounds,
+	BBC_GetPerformanceCounter,
+	BBC_GetPerformanceFrequency,
 	BBC_GetQueuedAudioSize,
 	BBC_GetRenderTarget,
 	BBC_GetTicks,
 	BBC_GetWindowFlags,
 	BBC_HasIntersection,
+	BBC_IntersectRectAndLine,
 	BBC_LoadBMP_RW,
 	BBC_LoadWAV_RW,
 	BBC_LockAudioDevice,
@@ -757,11 +809,14 @@ static void *sysfunc[NSYS] = {
 	BBC_QueueAudio,
 	BBC_RWFromFile,
 	BBC_RWFromMem,
+	BBC_RWread,
+	BBC_RWwrite,
 	BBC_RemoveTimer,
 	BBC_RenderClear,
 	BBC_RenderCopy,
 	BBC_RenderCopyEx,
 	BBC_RenderCopyExF,
+	BBC_RenderCopyF,
 	BBC_RenderDrawLine,
 	BBC_RenderDrawLines,
 	BBC_RenderDrawPoint,
@@ -769,6 +824,7 @@ static void *sysfunc[NSYS] = {
 	BBC_RenderFillRect,
 	BBC_RenderFillRects,
 	BBC_RenderFlush,
+	BBC_RenderGeometry,
 	WASM_RenderReadPixels,
 	WASM_RenderSetClipRect,
 	BBC_SetColorKey,
@@ -804,6 +860,8 @@ static void *sysfunc[NSYS] = {
 	BBC_gmtime,
 	BBC_localtime,
 	BBC_mktime,
+	BBC_stbi_image_free,
+	BBC_stbi_load_gif_from_memory,
 	BBC_stbi_set_flip_vertically_on_load,
 	BBC_time } ;
 

@@ -20,7 +20,7 @@ SDL_PATH := ../SDL
 
 LOCAL_C_INCLUDES := $(LOCAL_PATH)/$(SDL_PATH)/include
 
-LOCAL_LDLIBS := -lGLESv1_CM -lGLESv2 -llog
+LOCAL_LDLIBS := -lGLESv1_CM -lGLESv2 -lOpenSLES -llog -landroid
 
 ifeq ($(TARGET_ARCH),x86)
 
@@ -44,6 +44,15 @@ LOCAL_SRC_FILES := bbdata_arm_32.s bbmain.c bbexec.c bbeval.c bbcmos.c.neon bbcc
 	bbcvtx.c flood.c bbcsdl.c bbasmb_arm_32.c SDL2_gfxPrimitives.c SDL2_rotozoom.c sort.c
 
 LOCAL_CFLAGS := -munaligned-access -fsigned-char
+
+endif
+
+ifeq ($(TARGET_ARCH),arm64)
+
+LOCAL_SRC_FILES := bbdata_arm_64.s bbmain.c bbexec.c bbeval.c bbcmos.c.neon bbccli.c bbcvdu.c \
+	bbcvtx.c flood.c bbcsdl.c bbasmb_arm_64.c SDL2_gfxPrimitives.c SDL2_rotozoom.c sort.c
+
+LOCAL_CFLAGS := -fsigned-char
 
 endif
 
