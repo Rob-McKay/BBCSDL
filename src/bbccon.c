@@ -1,9 +1,9 @@
 /******************************************************************\
 *       BBC BASIC Minimal Console Version                          *
-*       Copyright (C) R. T. Russell, 2021-2022                     *
+*       Copyright (C) R. T. Russell, 2021-2023                     *
 *                                                                  *
 *       bbccon.c Main program, Initialisation, Keyboard handling   *
-*       Version 0.41a, 03-Mar-2022                                 *
+*       Version 0.43a, 23-Mar-2023                                 *
 \******************************************************************/
 
 #define _GNU_SOURCE
@@ -604,8 +604,7 @@ heapptr xtrap (void)
 // Report a 'fatal' error:
 void faterr (const char *msg)
 {
-	fprintf (stderr, "%s\r\n", msg) ;
-	error (256, "") ;
+	error (512, "") ;
 }
 
 // Read keyboard or F-key expansion:
@@ -1305,14 +1304,16 @@ unsigned char osbget (void *chan, int *peof)
 	unsigned char byte = 0 ;
 	if (peof != NULL)
 		*peof = 0 ;
-#ifdef _WIN32
 	if (chan <= (void *)MAX_PORTS)
 	    {
+#ifdef _WIN32
 		intptr_t file = _get_osfhandle (fileno (lookup (chan))) ;
 		ReadFile ((HANDLE) file, &byte, 1, NULL, NULL) ;
+#else
+		read (fileno (lookup (chan)), &byte, 1) ;
+#endif
 		return byte ;
 	    }
-#endif
 	if ((chan > (void *)MAX_PORTS) && (chan <= (void *)(MAX_PORTS+MAX_FILES)))
 	    {
 		int index = (size_t) chan - MAX_PORTS - 1 ;
@@ -1341,14 +1342,16 @@ unsigned char osbget (void *chan, int *peof)
 // Write a byte:
 void osbput (void *chan, unsigned char byte)
 {
-#ifdef _WIN32
 	if (chan <= (void *) MAX_PORTS)
 	    {
+#ifdef _WIN32
 		intptr_t file = _get_osfhandle (fileno (lookup (chan))) ;
 		WriteFile ((HANDLE) file, &byte, 1, NULL, NULL) ;
+#else
+		write (fileno (lookup (chan)), &byte, 1) ;
+#endif
 		return ;
 	    }
-#endif
 	if ((chan > (void *)MAX_PORTS) && (chan <= (void *)(MAX_PORTS+MAX_FILES)))
 	    {
 		int index = (size_t) chan - MAX_PORTS - 1 ;
@@ -1497,7 +1500,7 @@ int entry (void *immediate)
 	spchan = NULL ;
 	exchan = NULL ;
 
-	if (immediate)
+	if (immediate == (void *) 1)
 	    {
 		text (szVersion) ;
 		crlf () ;
@@ -1666,7 +1669,7 @@ int main (int argc, char* argv[])
 int i ;
 char *env, *p, *q ;
 int exitcode = 0 ;
-void *immediate ;
+void *immediate = NULL ;
 FILE *ProgFile, *TestFile ;
 char szAutoRun[MAX_PATH + 1] ;
 
@@ -1775,6 +1778,32 @@ pthread_t hThread = NULL ;
 		    }
 	    }
 
+	for (i = 1; i < argc; i++)
+	    {
+		if (NULL != strstr(argv[i], "-quit")) immediate = (void *) -1 ;
+		if (NULL != strstr(argv[i], "-load")) immediate = (void *) 1 ;
+		if (NULL != strstr(argv[i], "-help")) immediate = (void *) 2 ;
+		if (immediate)
+		    {
+			argc-- ;
+			while (i++ < argc)
+				argv[i - 1] = argv[i] ;
+			break ;
+		    }
+	    }
+
+	if (immediate == (void *) 2)
+	    {
+		printf ("%s %s\n\n", szVersion, szNotice) ;
+		printf ("The command syntax is: bbcbasic [option] [bbcfile]\n\n") ;
+		printf ("where <option> is one of:\n") ;
+		printf ("  -help  Display this message.\n") ;
+		printf ("  -load  Load BASIC program <bbcfile> but don't run it.\n") ;
+		printf ("  -quit  Run BASIC program <bbcfile> and quit when it ends.\n") ;
+		printf ("otherwise run <bbcfile> (if any) and stay in the interpreter.\n") ;
+		return 0 ;
+	    }
+
 	strcpy (szAutoRun, szLibrary) ;
 
 	q = strrchr (szAutoRun, '/') ;
@@ -1807,7 +1836,6 @@ pthread_t hThread = NULL ;
 	    {
 		fread (progRAM, 1, userTOP - progRAM, ProgFile) ;
 		fclose (ProgFile) ;
-		immediate = NULL ;
 	    }
 	else
 	    {
