@@ -1,12 +1,12 @@
 /*****************************************************************\
 *       32-bit BBC BASIC Interpreter (Emscripten / Web Assembly)  *
-*       (c) 2018-2023  R.T.Russell  http://www.rtrussell.co.uk/   *
+*       (c) 2018-2026  R.T.Russell  http://www.rtrussell.co.uk/   *
 *                                                                 *
 *       The name 'BBC BASIC' is the property of the British       *
 *       Broadcasting Corporation and used with their permission   *
 *                                                                 *
 *       bbasmb.c: API Wrappers to satisfy function signatures     *
-*       Version 1.34a, 26-Jan-2023                                *
+*       Version 1.44a, 05-Feb-2026                                *
 \*****************************************************************/
 
 #include <stdlib.h>
@@ -262,6 +262,10 @@ long long BBC_CreateRGBSurface(st flgs, st width, st height, st depth, st Rmask,
 	  st i8, st i9, st i10, st i11, db f0, db f1, db f2, db f3, db f4, db f5, db f6, db f7)
 	{ return (intptr_t) SDL_CreateRGBSurface(flgs, width, height, depth, Rmask, Gmask, Bmask, Amask); }
 
+long long BBC_CreateRGBSurfaceFrom(st pixels, st width, st height, st depth, st pitch, st Rmask, st Gmask,
+	  st Bmask, st Amask, st i9, st i10, st i11, db f0, db f1, db f2, db f3, db f4, db f5, db f6, db f7)
+	{ return (intptr_t) SDL_CreateRGBSurfaceFrom((void*)pixels, width, height, depth, pitch, Rmask, Gmask, Bmask, Amask); }
+
 long long BBC_CreateRGBSurfaceWithFormat(st flgs, st width, st height, st depth, st format, st i5, st i6, st i7,
 	  st i8, st i9, st i10, st i11, db f0, db f1, db f2, db f3, db f4, db f5, db f6, db f7)
 	{ return (intptr_t) SDL_CreateRGBSurfaceWithFormat(flgs, width, height, depth, format); }
@@ -353,7 +357,7 @@ long long BBC_GL_SetSwapInterval(st interval, st i1, st i2, st i3, st i4, st i5,
 
 long long BBC_GL_SwapWindow(st window, st i1, st i2, st i3, st i4, st i5, st i6, st i7,
 	  st i8, st i9, st i10, st i11, db f0, db f1, db f2, db f3, db f4, db f5, db f6, db f7)
-	{ SDL_GL_SwapWindow((SDL_Window*) window); bYield = 1; return 0; }
+	{ glFinish(); bYield = 1; return 0; }
 
 // Audio:
 
@@ -448,6 +452,10 @@ long long BBC_GetTicks(st i0, st i1, st i2, st i3, st i4, st i5, st i6, st i7,
 	  st i8, st i9, st i10, st i11, db f0, db f1, db f2, db f3, db f4, db f5, db f6, db f7)
 	{ return SDL_GetTicks(); }
 
+long long BBC_GetTicks64(st i0, st i1, st i2, st i3, st i4, st i5, st i6, st i7,
+	  st i8, st i9, st i10, st i11, db f0, db f1, db f2, db f3, db f4, db f5, db f6, db f7)
+	{ return SDL_GetTicks64(); }
+
 long long BBC_AddTimer(st interval, st callback, st param, st i3, st i4, st i5, st i6, st i7,
 	  st i8, st i9, st i10, st i11, db f0, db f1, db f2, db f3, db f4, db f5, db f6, db f7)
 	{ return SDL_AddTimer(interval, (SDL_TimerCallback) callback, (void *) param); }
@@ -458,6 +466,22 @@ long long BBC_RemoveTimer(st id, st i1, st i2, st i3, st i4, st i5, st i6, st i7
 
 // Miscellaneous:
 
+long long BBC_CaptureMouse(st enabled, st i1, st i2, st i3, st i4, st i5, st i6, st i7,
+	  st i8, st i9, st i10, st i11, db f0, db f1, db f2, db f3, db f4, db f5, db f6, db f7)
+	{ return SDL_CaptureMouse(enabled); }
+
+long long BBC_CreateColorCursor(st surface, st hot_x, st hot_y, st i3, st i4, st i5, st i6, st i7,
+	  st i8, st i9, st i10, st i11, db f0, db f1, db f2, db f3, db f4, db f5, db f6, db f7)
+	{ return (intptr_t) SDL_CreateColorCursor((SDL_Surface *)surface, hot_x, hot_y); }
+
+long long BBC_Delay(st ms, st i1, st i2, st i3, st i4, st i5, st i6, st i7,
+	  st i8, st i9, st i10, st i11, db f0, db f1, db f2, db f3, db f4, db f5, db f6, db f7)
+	{ SDL_Delay(ms); return 0; }
+
+long long BBC_GetError(st i0, st i1, st i2, st i3, st i4, st i5, st i6, st i7,
+	  st i8, st i9, st i10, st i11, db f0, db f1, db f2, db f3, db f4, db f5, db f6, db f7)
+	{ return (intptr_t) SDL_GetError(); }
+
 long long BBC_HasIntersection(st recta, st rectb, st i2, st i3, st i4, st i5, st i6, st i7,
 	  st i8, st i9, st i10, st i11, db f0, db f1, db f2, db f3, db f4, db f5, db f6, db f7)
 	{ return SDL_HasIntersection((const SDL_Rect*) recta, (const SDL_Rect*) rectb); }
@@ -465,6 +489,10 @@ long long BBC_HasIntersection(st recta, st rectb, st i2, st i3, st i4, st i5, st
 long long BBC_IntersectRectAndLine(st rect, st X1, st Y1, st X2, st Y2, st i5, st i6, st i7,
 	  st i8, st i9, st i10, st i11, db f0, db f1, db f2, db f3, db f4, db f5, db f6, db f7)
 	{ return SDL_IntersectRectAndLine((const SDL_Rect*) rect, (int*) X1, (int*) Y1, (int*) X2, (int*) Y2); }
+
+long long BBC_SetCursor(st cursor, st i1, st i2, st i3, st i4, st i5, st i6, st i7,
+	  st i8, st i9, st i10, st i11, db f0, db f1, db f2, db f3, db f4, db f5, db f6, db f7)
+	{ SDL_SetCursor((SDL_Cursor *)cursor); return 0; }
 
 long long BBC_SetHint(st name, st value, st i2, st i3, st i4, st i5, st i6, st i7,
 	  st i8, st i9, st i10, st i11, db f0, db f1, db f2, db f3, db f4, db f5, db f6, db f7)
@@ -474,9 +502,22 @@ long long BBC_GetWindowFlags(st window, st i1, st i2, st i3, st i4, st i5, st i6
 	  st i8, st i9, st i10, st i11, db f0, db f1, db f2, db f3, db f4, db f5, db f6, db f7)
 	{ return SDL_GetWindowFlags((SDL_Window*) window); }
 
+long long BBC_SetWindowFullscreen(st window, st flag, st i2, st i3, st i4, st i5, st i6, st i7,
+	  st i8, st i9, st i10, st i11, db f0, db f1, db f2, db f3, db f4, db f5, db f6, db f7)
+	{ if (flag) emscripten_run_script("Module.requestFullscreen()"); 
+	  else      emscripten_run_script("document.exitFullscreen()"); return 0; }
+
+long long BBC_SetWindowPosition(st window, st x, st y, st i3, st i4, st i5, st i6, st i7,
+	  st i8, st i9, st i10, st i11, db f0, db f1, db f2, db f3, db f4, db f5, db f6, db f7)
+	{ SDL_SetWindowPosition((SDL_Window*) window, x, y); return 0; }
+
 long long BBC_SetWindowResizable(st window, st resizable, st i2, st i3, st i4, st i5, st i6, st i7,
 	  st i8, st i9, st i10, st i11, db f0, db f1, db f2, db f3, db f4, db f5, db f6, db f7)
 	{ SDL_SetWindowResizable((SDL_Window*) window, resizable); return 0; }
+
+long long BBC_SetWindowSize(st window, st w, st h, st i3, st i4, st i5, st i6, st i7,
+	  st i8, st i9, st i10, st i11, db f0, db f1, db f2, db f3, db f4, db f5, db f6, db f7)
+	{ SDL_SetWindowSize((SDL_Window*) window, w, h); return 0; }
 
 long long BBC_SetWindowTitle(st window, st title, st i2, st i3, st i4, st i5, st i6, st i7,
 	  st i8, st i9, st i10, st i11, db f0, db f1, db f2, db f3, db f4, db f5, db f6, db f7)
@@ -522,13 +563,25 @@ long long BBC_memcpy(st dest, st src, st n, st i3, st i4, st i5, st i6, st i7,
 	  st i8, st i9, st i10, st i11, db f0, db f1, db f2, db f3, db f4, db f5, db f6, db f7)
 	{ return (intptr_t) SDL_memcpy((void*) dest, (void*) src, n); }
 
+long long BBC_memmove(st dest, st src, st n, st i3, st i4, st i5, st i6, st i7,
+	  st i8, st i9, st i10, st i11, db f0, db f1, db f2, db f3, db f4, db f5, db f6, db f7)
+	{ return (intptr_t) SDL_memmove((void*) dest, (void*) src, n); }
+
 long long BBC_memset(st dest, st c, st n, st i3, st i4, st i5, st i6, st i7,
 	  st i8, st i9, st i10, st i11, db f0, db f1, db f2, db f3, db f4, db f5, db f6, db f7)
 	{ return (intptr_t) SDL_memset((void*) dest, c, n); }
 
+long long BBC_TTF_GetFontKerningSizeGlyphs(st font, st prev_index, st index, st i3, st i4, st i5, st i6, st i7,
+	  st i8, st i9, st i10, st i11, db f0, db f1, db f2, db f3, db f4, db f5, db f6, db f7)
+	{ return TTF_GetFontKerningSizeGlyphs((TTF_Font *) font, prev_index, index); }
+
 long long BBC_TTF_Linked_Version(st i0, st i1, st i2, st i3, st i4, st i5, st i6, st i7,
 	  st i8, st i9, st i10, st i11, db f0, db f1, db f2, db f3, db f4, db f5, db f6, db f7)
 	{ return (intptr_t) TTF_Linked_Version(); }
+
+long long BBC_OpenURL(st url, st i1, st i2, st i3, st i4, st i5, st i6, st i7,
+	  st i8, st i9, st i10, st i11, db f0, db f1, db f2, db f3, db f4, db f5, db f6, db f7)
+	{ return SDL_OpenURL((const char *) url); }
 
 // Networking (web sockets)
 
@@ -606,8 +659,11 @@ long long BBC_emscripten_async_wget(st url, st file, st i2, st i3, st i4, st i5,
 	return 0 ;
 }
 
-#define NSYS 126
-#define POW2 128 // smallest power-of-2 >= NSYS
+long long BBC_emscripten_run_script_string(st script, st i1, st i2, st i3, st i4, st i5, st i6, st i7,
+	  st i8, st i9, st i10, st i11, db f0, db f1, db f2, db f3, db f4, db f5, db f6, db f7)
+	{ return (intptr_t) emscripten_run_script_string((const char*) script); }
+
+#define NSYS 141
 
 static const char *sysname[NSYS] = {
 	"B2D_GetProcAddress",
@@ -638,15 +694,19 @@ static const char *sysname[NSYS] = {
 	"SDLNet_TCP_Send",
 	"SDL_AddTimer",
 	"SDL_BuildAudioCVT",
+	"SDL_CaptureMouse",
 	"SDL_ClearQueuedAudio",
 	"SDL_CloseAudioDevice",
 	"SDL_ComposeCustomBlendMode",
 	"SDL_ConvertAudio",
 	"SDL_ConvertSurfaceFormat",
+	"SDL_CreateColorCursor",
 	"SDL_CreateRGBSurface",
+	"SDL_CreateRGBSurfaceFrom",
 	"SDL_CreateRGBSurfaceWithFormat",
 	"SDL_CreateTexture",
 	"SDL_CreateTextureFromSurface",
+	"SDL_Delay",
 	"SDL_DestroyTexture",
 	"SDL_FillRect",
 	"SDL_FreeSurface",
@@ -662,11 +722,13 @@ static const char *sysname[NSYS] = {
 	"SDL_GL_SetSwapInterval",
 	"SDL_GL_SwapWindow",
 	"SDL_GetDisplayUsableBounds",
+	"SDL_GetError",
 	"SDL_GetPerformanceCounter",
 	"SDL_GetPerformanceFrequency",
 	"SDL_GetQueuedAudioSize",
 	"SDL_GetRenderTarget",
 	"SDL_GetTicks",
+	"SDL_GetTicks64",
 	"SDL_GetWindowFlags",
 	"SDL_HasIntersection",
 	"SDL_IntersectRectAndLine",
@@ -676,6 +738,7 @@ static const char *sysname[NSYS] = {
 	"SDL_LockTexture",
 	"SDL_MixAudioFormat",
 	"SDL_OpenAudioDevice",
+	"SDL_OpenURL",
 	"SDL_PauseAudioDevice",
 	"SDL_QueryTexture",
 	"SDL_QueueAudio",
@@ -700,6 +763,7 @@ static const char *sysname[NSYS] = {
 	"SDL_RenderReadPixels",
 	"SDL_RenderSetClipRect",
 	"SDL_SetColorKey",
+	"SDL_SetCursor",
 	"SDL_SetHint",
 	"SDL_SetPaletteColors",
 	"SDL_SetRenderDrawBlendMode",
@@ -711,7 +775,10 @@ static const char *sysname[NSYS] = {
 	"SDL_SetTextureAlphaMod",
 	"SDL_SetTextureBlendMode",
 	"SDL_SetTextureColorMod",
+	"SDL_SetWindowFullscreen",
+	"SDL_SetWindowPosition",
 	"SDL_SetWindowResizable",
+	"SDL_SetWindowSize",
 	"SDL_SetWindowTitle",
 	"SDL_ShowSimpleMessageBox",
 	"SDL_UnlockAudioDevice",
@@ -720,21 +787,25 @@ static const char *sysname[NSYS] = {
 	"SDL_free",
 	"SDL_malloc",
 	"SDL_memcpy",
+	"SDL_memmove",
 	"SDL_memset",
 	"STBIMG_Load",
 	"STBIMG_LoadTexture",
+	"TTF_GetFontKerningSizeGlyphs",
 	"TTF_Linked_Version",
 	"asctime",
 	"drmp3_free",
 	"drmp3_open_file_and_read_f32",
 	"drmp3dec_f32_to_s16",
 	"emscripten_async_wget",
+	"emscripten_run_script_string",
 	"gmtime",
 	"localtime",
 	"mktime",
 	"stbi_image_free",
 	"stbi_load_gif_from_memory",
 	"stbi_set_flip_vertically_on_load",
+	"szNotice",
 	"time"} ;
 
 static void *sysfunc[NSYS] = {
@@ -766,15 +837,19 @@ static void *sysfunc[NSYS] = {
 	BBC_Net_TCP_Send,
 	BBC_AddTimer,
 	BBC_BuildAudioCVT,
+	BBC_CaptureMouse,
 	BBC_ClearQueuedAudio,
 	BBC_CloseAudioDevice,
 	BBC_ComposeCustomBlendMode,
 	BBC_ConvertAudio,
 	BBC_ConvertSurfaceFormat,
+	BBC_CreateColorCursor,
 	BBC_CreateRGBSurface,
+	BBC_CreateRGBSurfaceFrom,
 	BBC_CreateRGBSurfaceWithFormat,
 	BBC_CreateTexture,
 	BBC_CreateTextureFromSurface,
+	BBC_Delay,
 	BBC_DestroyTexture,
 	BBC_FillRect,
 	BBC_FreeSurface,
@@ -790,11 +865,13 @@ static void *sysfunc[NSYS] = {
 	BBC_GL_SetSwapInterval,
 	BBC_GL_SwapWindow,
 	BBC_GetDisplayUsableBounds,
+	BBC_GetError,
 	BBC_GetPerformanceCounter,
 	BBC_GetPerformanceFrequency,
 	BBC_GetQueuedAudioSize,
 	BBC_GetRenderTarget,
 	BBC_GetTicks,
+	BBC_GetTicks64,
 	BBC_GetWindowFlags,
 	BBC_HasIntersection,
 	BBC_IntersectRectAndLine,
@@ -804,6 +881,7 @@ static void *sysfunc[NSYS] = {
 	BBC_LockTexture,
 	BBC_MixAudioFormat,
 	BBC_OpenAudioDevice,
+	BBC_OpenURL,
 	BBC_PauseAudioDevice,
 	BBC_QueryTexture,
 	BBC_QueueAudio,
@@ -828,6 +906,7 @@ static void *sysfunc[NSYS] = {
 	WASM_RenderReadPixels,
 	WASM_RenderSetClipRect,
 	BBC_SetColorKey,
+	BBC_SetCursor,
 	BBC_SetHint,
 	BBC_SetPaletteColors,
 	BBC_SetRenderDrawBlendMode,
@@ -839,7 +918,10 @@ static void *sysfunc[NSYS] = {
 	BBC_SetTextureAlphaMod,
 	BBC_SetTextureBlendMode,
 	BBC_SetTextureColorMod,
+	BBC_SetWindowFullscreen,
+	BBC_SetWindowPosition,
 	BBC_SetWindowResizable,
+	BBC_SetWindowSize,
 	BBC_SetWindowTitle,
 	BBC_ShowSimpleMessageBox,
 	BBC_UnlockAudioDevice,
@@ -848,34 +930,42 @@ static void *sysfunc[NSYS] = {
 	BBC_free,
 	BBC_malloc,
 	BBC_memcpy,
+	BBC_memmove,
 	BBC_memset,
 	BBC_STBIMG_Load,
 	BBC_STBIMG_LoadTexture,
+	BBC_TTF_GetFontKerningSizeGlyphs,
 	BBC_TTF_Linked_Version,
 	BBC_asctime,
 	BBC_drmp3_free,
 	BBC_drmp3_open_file_and_read_f32,
 	BBC_drmp3dec_f32_to_s16,
 	BBC_emscripten_async_wget,
+	BBC_emscripten_run_script_string,
 	BBC_gmtime,
 	BBC_localtime,
 	BBC_mktime,
 	BBC_stbi_image_free,
 	BBC_stbi_load_gif_from_memory,
 	BBC_stbi_set_flip_vertically_on_load,
+	(void *) szNotice,
 	BBC_time } ;
 
 void *dlsym (void *handle, const char *symbol)
 {
-	int b = 0, h = POW2, r = 0 ;
+	int h = NSYS, l = 0, m, r ;
 	do
 	    {
-		h /= 2 ;
-		if (((b + h) < NSYS) && ((r = strcmp (symbol, sysname[b + h])) >= 0))
-			b += h ;
+		m = (l + h) / 2 ;
+		r = strcmp (symbol, sysname[m]) ;
+		if (r == 0)
+			return sysfunc[m] ; 
+		if (r > 0)
+			l = m + 1 ;
+		else
+			h = m ;
 	    }
-	while (h) ;
-	if (r == 0) return sysfunc[b] ;
+	while (l < h) ;
 	return NULL ;
 }
 
@@ -1103,7 +1193,6 @@ long long BBC_glDeleteFramebuffers(st num, st framebuffers, st i2, st i3, st i4,
 	{ glDeleteFramebuffers(num, (const GLuint*) framebuffers); return 0; }
 
 #define GLNSYS 54
-#define GLPOW2 64 // smallest power-of-2 >= GLNSYS
 
 static const char *GLname[GLNSYS] = {
 	"glActiveTexture",
@@ -1220,14 +1309,18 @@ static void *GLfunc[GLNSYS] = {
 long long BBC_GL_GetProcAddress(st symbol, st i1, st i2, st i3, st i4, st i5, st i6, st i7,
 	  st i8, st i9, st i10, st i11, db f0, db f1, db f2, db f3, db f4, db f5, db f6, db f7)
 {
-	int b = 0, h = GLPOW2, r = 0 ;
+	int h = GLNSYS, l = 0, m, r ;
 	do
 	    {
-		h /= 2 ;
-		if (((b + h) < GLNSYS) && ((r = strcmp ((const char*) symbol, GLname[b + h])) >= 0))
-			b += h ;
+ 		m = (l + h) / 2 ;
+		r = strcmp ((const char*) symbol, GLname[m]) ;
+		if (r == 0)
+			return (intptr_t) GLfunc[m] ; 
+		if (r > 0)
+			l = m + 1 ;
+		else
+			h = m ;
 	    }
-	while (h) ;
-	if (r == 0) return (intptr_t) GLfunc[b] ;
+	while (l < h) ;
 	return 0 ;
 }

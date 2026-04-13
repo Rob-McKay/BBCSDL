@@ -1,16 +1,17 @@
 /*****************************************************************\
 *       32-bit or 64-bit BBC BASIC for SDL 2.0                    *
-*       (C) 2017-2023  R.T.Russell  http://www.rtrussell.co.uk/   *
+*       (C) 2017-2026  R.T.Russell  http://www.rtrussell.co.uk/   *
 *                                                                 *
 *       The name 'BBC BASIC' is the property of the British       *
 *       Broadcasting Corporation and used with their permission   *
 *                                                                 *
 *       bbcsdl.c Main program: Initialisation, Polling Loop       *
-*       Version 1.34b, 21-Feb-2023                                *
+*       Version 1.44a, 14-Mar-2026                                *
 \*****************************************************************/
 
 #include <stdlib.h>
 #include <stdio.h>
+#include <stdint.h>
 #include <unistd.h>
 #include <sys/stat.h>
 #include <errno.h>
@@ -24,6 +25,7 @@
 #ifdef __WINDOWS__
 #include <windows.h>
 #include <wchar.h>
+#include <shellapi.h>
 #if defined __x86_64__
 #define PLATFORM "Win64"
 #else
@@ -55,6 +57,7 @@ unsigned int DIRoff = 19 ; // Used by Android x86-32 build
 #endif
 #ifdef __EMSCRIPTEN__
 #include <emscripten/emscripten.h>
+#include <emscripten/html5.h>
 #include <sys/mman.h>
 #define PLATFORM "Wasm"
 #endif
@@ -83,7 +86,7 @@ unsigned int DIRoff = 19 ; // Used by Android x86-32 build
 
 // Performance tuning parameters:
 #define POLLT 2  // Poll for approaching vSync every 2 milliseconds 
-#define FGDLY 50 // Wait 50 * POLLT ms after returning to foreground
+#define FGDLY 80 // Wait 80 * POLLT ms after returning to foreground
 #define BUSYT 40 // Busy-wait for 40 ms after last user output event
 #define PACER 12 // 12 ms 'processing time' per frame (max. ~75 fps)
 #define MAXEV 10 // Don't refresh display if > 10 waiting events ...
@@ -180,13 +183,35 @@ static int blink = 0 ;
 static signed char oldscroln = 0 ;
 static const Uint8* keystate ;
 static int exitcode = 0, running = 1 ;
-static int MaximumRAM = MAXIMUM_RAM ;
+static intptr_t MaximumRAM = MAXIMUM_RAM ;
 static SDL_AudioSpec want, have ;
 static SDL_Rect backbutton = {0} ;
 static SDL_Texture *buttexture ;
 
 #if defined __EMSCRIPTEN__
-// dlsym implemented locally
+static EM_BOOL Emscripten_HandleFullscreenChange(int eventType, 
+		const EmscriptenFullscreenChangeEvent *fullscreenChangeEvent, void *userData)
+{
+	static int oldw, oldh ;
+	int neww = oldw, newh = oldh ;
+	SDL_Window *window = userData ;
+	SDL_Event event ;
+	if (fullscreenChangeEvent->isFullscreen)
+	    {
+		SDL_GetWindowSize (window, &oldw, &oldh) ;
+		neww = fullscreenChangeEvent->screenWidth ;
+		newh = fullscreenChangeEvent->screenHeight ;
+	    }
+	SDL_SetWindowSize (window, neww, newh) ;
+	event.type = SDL_WINDOWEVENT ;
+	event.window.windowID = SDL_GetWindowID(window) ;
+	event.window.event = SDL_WINDOWEVENT_RESIZED ;
+	event.window.data1 = neww ;
+	event.window.data2 = newh ;
+	while (SDL_PushEvent(&event) < 0)
+		SDL_Delay(1) ;
+	return 0;
+}
 #elif defined __WINDOWS__
 void *dlsym (void *handle, const char *symbol)
 {
@@ -206,7 +231,7 @@ void *dlsym (void *handle, const char *symbol)
 #endif
 
 #if defined __LINUX__ || defined __ANDROID__
-static void *mymap (unsigned int size)
+static void *mymap (uintptr_t size)
 {
 	FILE *fp ;
 	char line[256] ;
@@ -222,11 +247,7 @@ static void *mymap (unsigned int size)
 		start = (void *)((size_t)start & -0x1000) ; // page align (GCC extension)
 		if (start >= (base + size)) 
 			return base ;
-		if (finish > (void *)0xFFFFF000)
-			return NULL ;
 		base = (void *)(((size_t)finish + 0xFFF) & -0x1000) ; // page align
-		if (base > ((void *)0xFFFFFFFF - size))
-			return NULL ;
 	    }
 	return base ;
 }
@@ -286,6 +307,7 @@ Uint32 UserTimerCallback(Uint32 interval, void *param)
 	return(interval) ;
 }
 
+#ifndef __EMSCRIPTEN__
 static Uint32 PollTimerCallback(Uint32 interval, void *param)
 {
 	if (!SDL_SemValue(Idler))
@@ -294,6 +316,7 @@ static Uint32 PollTimerCallback(Uint32 interval, void *param)
 		bBackground++ ;
 	return interval ;
 }
+#endif
 
 static void UserAudioCallback(void* userdata, Uint8* stream, int len)
 {
@@ -333,6 +356,36 @@ int blocksize = AUDIOLEN * (tempo & 0x3F) ;
 	    }
 
 	return;
+}
+
+SDL_Texture *MakeBackButton(SDL_Renderer *renderer)
+{
+	unsigned int *pixels ;
+	int i, pitch ;
+	SDL_Texture *buttexture = SDL_CreateTexture (renderer, SDL_PIXELFORMAT_ABGR8888, 
+						     SDL_TEXTUREACCESS_STREAMING, 32, 32) ;
+	SDL_LockTexture (buttexture, NULL, (void **)&pixels, &pitch) ;
+	for (i = 0; i < 32 * 32; i++)
+		*(pixels + i) = 0xC0FFFFFF ; // background
+	for (i = 5; i < 16; i++)
+	    {
+		*(pixels + i*32 - i -  7) = 0xE0E0A090 ; // arrow
+		*(pixels + i*32 - i -  8) = 0xFFFF4020 ; // arrow
+		*(pixels + i*32 - i -  9) = 0xFFFF4020 ; // arrow
+		*(pixels + i*32 - i - 10) = 0xFFFF4020 ; // arrow
+		*(pixels + i*32 - i - 11) = 0xE0E0A090 ; // arrow
+	    }
+	for (i--; i < 32 - 5; i++)
+	    {
+		*(pixels + i*32 + i -  6) = 0xE0E0A090 ; // arrow
+		*(pixels + i*32 + i -  7) = 0xFFFF4020 ; // arrow
+		*(pixels + i*32 + i -  8) = 0xFFFF4020 ; // arrow
+		*(pixels + i*32 + i -  9) = 0xFFFF4020 ; // arrow
+		*(pixels + i*32 + i - 10) = 0xE0E0A090 ; // arrow
+	    }
+	SDL_UnlockTexture (buttexture) ;
+	SDL_SetTextureBlendMode(buttexture, SDL_BLENDMODE_BLEND) ;
+	return buttexture ;
 }
 
 static Uint32 FlipCaret(SDL_Renderer *renderer, SDL_Rect *rect)
@@ -392,7 +445,7 @@ static void SetDir (char *newpath)
 	if (p)
 	    {
 		*p = '\0' ;
-		realpath (temp, szLoadDir) ;
+		(void) realpath (temp, szLoadDir) ;
 	    }
 	else
 	    {
@@ -409,7 +462,7 @@ static void SetDir (char *newpath)
 #endif
 }
 
-static void ShutDown ()
+static void ShutDown (void)
 {
 	int i ;
 
@@ -424,7 +477,9 @@ static void ShutDown ()
 #ifdef MUTEX
 	SDL_DestroyMutex (Mutex) ; 
 #endif
+#ifndef __EMSCRIPTEN__
 	SDL_RemoveTimer(PollTimerID) ;
+#endif
 	SDL_RemoveTimer(UserTimerID) ;
 	SDL_RemoveTimer(BlinkTimerID) ;
 
@@ -456,8 +511,10 @@ static int BBC_PeepEvents(SDL_Event* ev, int nev, SDL_eventaction action, Uint32
 
 static int myEventFilter(void* userdata, SDL_Event* pev)
 {
+#ifndef __EMSCRIPTEN__
 	if (!SDL_SemValue(Idler))
 		SDL_SemPost (Idler) ;
+#endif
 
 	switch (pev->type)
 	    {
@@ -465,6 +522,17 @@ static int myEventFilter(void* userdata, SDL_Event* pev)
 		case SDL_APP_DIDENTERBACKGROUND:
 		bBackground = 1 ;
 		break ;
+
+#ifndef __EMSCRIPTEN__
+		case SDL_WINDOWEVENT:
+		switch (pev->window.event)
+		    {
+			case SDL_WINDOWEVENT_RESIZED:
+			case SDL_WINDOWEVENT_SIZE_CHANGED:
+			bBackground = -FGDLY ;
+		    }
+		break ;
+#endif
 	    }
 
 #if defined __EMSCRIPTEN__ && defined MUTEX
@@ -486,14 +554,11 @@ int main(int argc, char* argv[])
 {
 int i ;
 size_t immediate ;
-int fullscreen = 0, fixedsize = 0, hidden = 0, borderless = 0 ;
+int fullscreen = 0, fixedsize = 0, hidden = 0, highdpi = 0, borderless = 0 ;
 SDL_RWops *ProgFile ;
 const SDL_version *TTFversion ;
 SDL_version SDLversion ;
 SDL_Event ev ;
-
-unsigned int *pixels ;
-int pitch ;
 
 #if defined(__WINDOWS__) || defined(__MACOSX__) || defined(__LINUX__)
 	gzclose(gzopen("bbc256x.png", "rb"));
@@ -501,6 +566,14 @@ int pitch ;
 
 #ifdef __WINDOWS__
 	SDL_setenv ("SDL_AUDIODRIVER", "directsound", 1) ;
+	LPWSTR* argw = CommandLineToArgvW(GetCommandLineW(), &argc);
+	for (i = 0; i < argc; i++)
+	    {
+		int len = WideCharToMultiByte(CP_UTF8, 0, argw[i], -1, NULL, 0, NULL, NULL);
+		argv[i] = malloc(len);
+		WideCharToMultiByte(CP_UTF8, 0, argw[i], -1, argv[i], len, NULL, NULL);
+	    }
+	LocalFree(argw);
 #endif
 
 if (SDL_Init(SDL_INIT_VIDEO | SDL_INIT_AUDIO | SDL_INIT_TIMER |
@@ -574,16 +647,18 @@ if (SDLNet_Init() == -1)
 
 // Setting quality to "linear" can break flood-fill, affecting 'jigsaw.bbc' etc.
 #if defined __ANDROID__ || defined __IPHONEOS__
+	SDL_SetHint (SDL_HINT_THREAD_STACK_SIZE, "0x2000000") ;
 	SDL_SetHint (SDL_HINT_RENDER_DRIVER, "opengles") ;
 	SDL_SetHint ("SDL_RENDER_BATCHING", "1") ;
 	SDL_SetHint (SDL_HINT_RENDER_SCALE_QUALITY, "nearest") ;
 	SDL_SetHint ("SDL_TV_REMOTE_AS_JOYSTICK", "0") ;
 	SDL_GL_SetAttribute (SDL_GL_CONTEXT_PROFILE_MASK, SDL_GL_CONTEXT_PROFILE_ES) ;
 	SDL_GL_SetAttribute (SDL_GL_CONTEXT_MAJOR_VERSION, 1) ;
-	SDL_GL_SetAttribute (SDL_GL_RED_SIZE, 5) ;
-	SDL_GL_SetAttribute (SDL_GL_GREEN_SIZE, 6) ;
-	SDL_GL_SetAttribute (SDL_GL_BLUE_SIZE, 5) ;
+	SDL_GL_SetAttribute (SDL_GL_RED_SIZE, 8) ;
+	SDL_GL_SetAttribute (SDL_GL_GREEN_SIZE, 8) ;
+	SDL_GL_SetAttribute (SDL_GL_BLUE_SIZE, 8) ;
 #else
+	SDL_SetHint (SDL_HINT_THREAD_STACK_SIZE, "0x2000000") ;
 	SDL_SetHint (SDL_HINT_RENDER_DRIVER, "opengl") ;
 	SDL_SetHint ("SDL_RENDER_BATCHING", "1") ;
 	SDL_SetHint (SDL_HINT_RENDER_SCALE_QUALITY, "nearest") ;
@@ -595,20 +670,23 @@ for (i = 1; i < argc; i++)
 	fixedsize |= (NULL != strstr (argv[i], "-fixedsize")) ;
 	fullscreen |= (NULL != strstr (argv[i], "-fullscreen")) ;
 	borderless |= (NULL != strstr (argv[i], "-borderless")) ;
+	highdpi |= (NULL != strstr (argv[i], "-highdpi")) ;
 	hidden |= (NULL != strstr (argv[i], "-hidden")) ;
 }
 
 window = SDL_CreateWindow("BBCSDL",  SDL_WINDOWPOS_CENTERED,  SDL_WINDOWPOS_CENTERED, 
-				SCREEN_WIDTH, SCREEN_HEIGHT, SDL_WINDOW_OPENGL | 
+				SCREEN_WIDTH, SCREEN_HEIGHT, 
 #ifdef __IPHONEOS__
 				SDL_WINDOW_ALLOW_HIGHDPI |
 #endif
 #ifdef __ANDROID__
 				SDL_WINDOW_BORDERLESS |
 #endif
+				(getenv("SDL_RENDER_DRIVER") ? 0 : SDL_WINDOW_OPENGL) |
 				(fixedsize ? 0 : SDL_WINDOW_RESIZABLE) | 
 				(fullscreen ? SDL_WINDOW_FULLSCREEN_DESKTOP : 0) | 
 				(borderless ? SDL_WINDOW_BORDERLESS : 0) | 
+				(highdpi ? SDL_WINDOW_ALLOW_HIGHDPI : 0) | 
 				(hidden ? SDL_WINDOW_HIDDEN : 0)) ;
 if (window == NULL)
 {
@@ -643,7 +721,7 @@ if (!SDL_RenderTargetSupported(renderer))
 	return 8;
 }
 
-SDL_GL_GetDrawableSize (window, &sizex, &sizey) ; // Window may not be the requested size
+SDL_GetRendererOutputSize (renderer, &sizex, &sizey) ; // Window may not be the requested size
 
 #if defined __ANDROID__ || defined __IPHONEOS__
 {
@@ -676,29 +754,7 @@ else if (sizex < sizey)
 else
 	backbutton.w = sizey / 24 ;
 backbutton.h = backbutton.w ;
-buttexture = SDL_CreateTexture (renderer, SDL_PIXELFORMAT_ABGR8888, 
-				SDL_TEXTUREACCESS_STREAMING, 32, 32) ;
-SDL_LockTexture (buttexture, NULL, (void **)&pixels, &pitch) ;
-for (i = 0; i < 32 * 32; i++)
-	*(pixels + i) = 0xC0FFFFFF ; // background
-for (i = 5; i < 16; i++)
-    {
-	*(pixels + i*32 - i -  7) = 0xE0E0A090 ; // arrow
-	*(pixels + i*32 - i -  8) = 0xFFFF4020 ; // arrow
-	*(pixels + i*32 - i -  9) = 0xFFFF4020 ; // arrow
-	*(pixels + i*32 - i - 10) = 0xFFFF4020 ; // arrow
-	*(pixels + i*32 - i - 11) = 0xE0E0A090 ; // arrow
-    }
-for (i--; i < 32 - 5; i++)
-    {
-	*(pixels + i*32 + i -  6) = 0xE0E0A090 ; // arrow
-	*(pixels + i*32 + i -  7) = 0xFFFF4020 ; // arrow
-	*(pixels + i*32 + i -  8) = 0xFFFF4020 ; // arrow
-	*(pixels + i*32 + i -  9) = 0xFFFF4020 ; // arrow
-	*(pixels + i*32 + i - 10) = 0xE0E0A090 ; // arrow
-    }
-SDL_UnlockTexture (buttexture) ;
-SDL_SetTextureBlendMode(buttexture, SDL_BLENDMODE_BLEND) ;
+buttexture = MakeBackButton (renderer) ;
 
 #if defined __WINDOWS__
 	// Allocate the program buffer
@@ -747,7 +803,7 @@ SDL_SetTextureBlendMode(buttexture, SDL_BLENDMODE_BLEND) ;
 
 	if (base != NULL)
 		userRAM = mmap (base, MaximumRAM, PROT_EXEC | PROT_READ | PROT_WRITE, 
-					MAP_FIXED | MAP_PRIVATE | MAP_ANON, -1, 0) ;
+			    MAP_FIXED | MAP_PRIVATE | MAP_ANON | MAP_NORESERVE, -1, 0) ;
 
 #endif
 
@@ -779,17 +835,6 @@ glTexParameteriBBC = SDL_GL_GetProcAddress ("glTexParameteri") ;
 glLogicOpBBC = SDL_GL_GetProcAddress("glLogicOp") ;
 glEnableBBC  = SDL_GL_GetProcAddress("glEnable") ;
 glDisableBBC = SDL_GL_GetProcAddress("glDisable") ;
-#ifndef __EMSCRIPTEN__
-if ((glTexParameteriBBC == NULL) || (glLogicOpBBC == NULL) || (glEnableBBC == NULL) || (glDisableBBC == NULL))
-{
-	SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_ERROR,
-				szVersion, "SDL_GL_GetProcAddress failed", NULL) ;
-	SDLNet_Quit() ;
-	TTF_Quit() ;
-	SDL_Quit() ;
-	return 10 ;
-}
-#endif
 
 #ifdef __WINDOWS__
 	wchar_t widepath[MAX_PATH] ;
@@ -923,6 +968,7 @@ Mutex = SDL_CreateMutex () ;
 #endif
 
 SDL_EventState(SDL_DROPFILE, SDL_ENABLE);
+SDL_EventState(SDL_DROPTEXT, SDL_ENABLE);
 SDL_PumpEvents () ;
 if (SDL_PeepEvents (&ev, 1, SDL_GETEVENT, SDL_DROPFILE, SDL_DROPFILE))
 {
@@ -989,8 +1035,10 @@ zoom = 32768 ; // normalised 1.0
 DestRect.w = sizex ; // Prevent crash if MOUSE used too soon
 DestRect.h = sizey ;
 
+#ifndef __EMSCRIPTEN__
 // Poll timer:
 PollTimerID = SDL_AddTimer(POLLT, PollTimerCallback, 0) ;
+#endif
 
 // 4 Hz timer:
 UserTimerID = SDL_AddTimer(250, UserTimerCallback, 0) ;
@@ -1000,7 +1048,9 @@ BlinkTimerID = SDL_AddTimer(400, BlinkTimerCallback, 0) ;
 
 // Semaphores:
 Sema4 = SDL_CreateSemaphore (0) ;
+#ifndef __EMSCRIPTEN__
 Idler = SDL_CreateSemaphore (0) ;
+#endif
 
 // Copies of window and renderer:
 hwndProg = window ;
@@ -1022,7 +1072,9 @@ while ((Thread = SDL_CreateThread(entry, "Interpreter", (void *) immediate)) == 
 
 // Main polling loop:
 #ifdef __EMSCRIPTEN__
-    emscripten_set_main_loop(mainloop, -1, 1);
+    emscripten_set_fullscreenchange_callback(EMSCRIPTEN_EVENT_TARGET_WINDOW, window, 0,
+						Emscripten_HandleFullscreenChange);
+    emscripten_set_main_loop(mainloop, 0, 1);
 #else
 while (running)
     {
@@ -1041,8 +1093,10 @@ static int maintick (void)
 	static float oldx, oldy ;
 	static int oldtextx, oldtexty ;
 	static unsigned int lastpaint, lastusrev, lastpump ;
+	static SDL_Texture* target = NULL ;
 	unsigned int now = SDL_GetTicks () ;
 	float scale = (float)(zoom) / 32768.0 ; // must be float
+	float yscale = scale ;
 	SDL_GetWindowSize (window, &ptsx, &ptsy) ;
 	SDL_GL_GetDrawableSize (window, &winx, &winy) ;
 	SDL_Rect caret ;
@@ -1060,6 +1114,7 @@ static int maintick (void)
 		backbutton.y = 50 ; // Move down to avoid status bar
 	DestRect.y = -pany * scale + backbutton.y ;
 	DestRect.h = sizey * scale - backbutton.y ;
+	yscale = (float)DestRect.h / (float)sizey ;
 #else
 	DestRect.y = -pany * scale ;
 	DestRect.h = sizey * scale ;
@@ -1074,7 +1129,6 @@ static int maintick (void)
 	    {
 		SDL_Rect SrcRect ;
 		SDL_Texture *bitmap = SDL_GetRenderTarget (renderer) ;
-
 		SrcRect.x = offsetx ;
 		SrcRect.y = offsety ;
 		SrcRect.w = sizex ;
@@ -1084,40 +1138,42 @@ static int maintick (void)
 		oldtexty = texty ;
 		int careton = blink && (cursa < 32) ;
 		caret.x = (textx - offsetx) * scale + DestRect.x ;
-		caret.y = (texty - offsety + cursa) * scale + DestRect.y ;
+		caret.y = (texty - offsety + cursa) * yscale + DestRect.y ;
 		if (cursx) caret.w = cursx * scale ; else caret.w = charx * scale ;
-		caret.h = (cursb - cursa) * scale ;
+		caret.h = (cursb - cursa) * yscale ;
 		if (caret.h < 0) caret.h = 0 ; 
 
-		SDL_SetRenderTarget(renderer, NULL) ;
-		SDL_SetRenderDrawColor (renderer, 0, 0, 0, 255) ;
-#ifdef __IPHONEOS__
-		glDisableBBC (GL_SCISSOR_TEST) ;
-#endif
-		SDL_RenderClear (renderer) ;
-		if (glTexParameteriBBC)
+		if ((bitmap != NULL) && (bBackground == 0))	// Immediately before SetRenderTarget
 		    {
-			SDL_GL_BindTexture (bitmap, NULL, NULL) ;
-			glTexParameteriBBC (GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR) ;
-			glTexParameteriBBC (GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR) ;
-			SDL_GL_UnbindTexture (bitmap) ;
-		    }
-		SDL_RenderCopy(renderer, bitmap, &SrcRect, &DestRect) ;
+			SDL_SetRenderTarget(renderer, NULL) ;
+			SDL_SetRenderDrawColor (renderer, 0, 0, 0, 255) ;
 #ifdef __IPHONEOS__
-		if ((flags & ESCDIS) == 0)
-			SDL_RenderCopy (renderer, buttexture, NULL, &backbutton) ;
+			glDisableBBC (GL_SCISSOR_TEST) ;
 #endif
-		if (glTexParameteriBBC)
-		    {
-			SDL_GL_BindTexture (bitmap, NULL, NULL) ;
-			glTexParameteriBBC (GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST) ;
-			glTexParameteriBBC (GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST) ;
-			SDL_GL_UnbindTexture (bitmap) ;
+			SDL_RenderClear (renderer) ;
+			if (glTexParameteriBBC)
+			    {
+				SDL_GL_BindTexture (bitmap, NULL, NULL) ;
+				glTexParameteriBBC (GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR) ;
+				glTexParameteriBBC (GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR) ;
+				SDL_GL_UnbindTexture (bitmap) ;
+			    }
+			SDL_RenderCopy(renderer, bitmap, &SrcRect, &DestRect) ;
+#ifdef __IPHONEOS__
+			if ((flags & ESCDIS) == 0)
+				SDL_RenderCopy (renderer, buttexture, NULL, &backbutton) ;
+#endif
+			if (glTexParameteriBBC)
+			    {
+				SDL_GL_BindTexture (bitmap, NULL, NULL) ;
+				glTexParameteriBBC (GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST) ;
+				glTexParameteriBBC (GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST) ;
+				SDL_GL_UnbindTexture (bitmap) ;
+			    }
+			if (careton) FlipCaret (renderer, &caret) ;
+			if (bBackground == 0) SDL_RenderPresent(renderer) ;
+			SDL_SetRenderTarget(renderer, bitmap);
 		    }
-		if (careton) FlipCaret (renderer, &caret) ;
-		SDL_RenderPresent(renderer) ;
-		SDL_SetRenderTarget(renderer, bitmap);
-
 		lastpaint = SDL_GetTicks() ; // wraps around after 50 days
 		now = lastpaint ;
 		bChanged = 0 ;
@@ -1382,42 +1438,72 @@ static int maintick (void)
 
 			switch (c)
 			    {
+				case SDLK_KP_7 :
+				c = 0 ;
+				if (ev.key.keysym.mod & KMOD_NUM) break ;
 				case SDLK_HOME :
 				c = 130 ;
 				break ;
 
+				case SDLK_KP_1 :
+				c = 0 ;
+				if (ev.key.keysym.mod & KMOD_NUM) break ;
 				case SDLK_END :
 				c = 131 ;
 				break ;
 
+				case SDLK_KP_9 :
+				c = 0 ;
+				if (ev.key.keysym.mod & KMOD_NUM) break ;
 				case SDLK_PAGEUP :
 				c = 132 ;
 				break ;
 
+				case SDLK_KP_3 :
+				c = 0 ;
+				if (ev.key.keysym.mod & KMOD_NUM) break ;
 				case SDLK_PAGEDOWN :
 				c = 133 ;
  				break ;
 
+				case SDLK_KP_0 :
+				c = 0 ;
+				if (ev.key.keysym.mod & KMOD_NUM) break ;
 				case SDLK_INSERT :
 				c = 134 ;
 				break ;
 
+				case SDLK_KP_PERIOD :
+				c = 0 ;
+				if (ev.key.keysym.mod & KMOD_NUM) break ;
 				case SDLK_DELETE :
 				c = 135 ;
 				break ;
 
+				case SDLK_KP_4 :
+				c = 0 ;
+				if (ev.key.keysym.mod & KMOD_NUM) break ;
 				case SDLK_LEFT :
 				c = 136 ;
 				break ;
 
+				case SDLK_KP_6 :
+				c = 0 ;
+				if (ev.key.keysym.mod & KMOD_NUM) break ;
 				case SDLK_RIGHT :
 				c = 137 ;
 				break ;
 
+				case SDLK_KP_2 :
+				c = 0 ;
+				if (ev.key.keysym.mod & KMOD_NUM) break ;
 				case SDLK_DOWN :
 				c = 138 ;
 				break ;
 
+				case SDLK_KP_8:
+				c = 0 ;
+				if (ev.key.keysym.mod & KMOD_NUM) break ;
 				case SDLK_UP :
 				c = 139 ;
 				break ;
@@ -1480,6 +1566,7 @@ static int maintick (void)
 						c += 32 ;
 				    }
 				else if ((ev.key.keysym.mod & KMOD_CTRL) &&
+					!(ev.key.keysym.mod & KMOD_ALT) &&
 					 (c >= SDLK_a) && (c <= SDLK_z))
 					c = c - SDLK_a + 1 ;
 				else if ((ev.key.keysym.mod & KMOD_GUI) &&
@@ -1589,7 +1676,21 @@ static int maintick (void)
 			oldy = ev.mgesture.y ;
 			break ;
 
+		case SDL_DROPFILE:
+		case SDL_DROPTEXT:
+			if (systrp && (sysflg & 8)) 
+			{
+				int wparam = ((intptr_t) ev.drop.file) & 0x0FFFFFFFFUL ;
+				int lparam = ((intptr_t) ev.drop.file) / 0x100000000UL ;
+				putevt (systrp, ev.type, wparam, lparam) ;
+				flags |= ALERT ;
+				break ;
+			}
+			break ;
+
 		case SDL_WINDOWEVENT:
+			ev.window.data1 *= winx / ptsx ;
+			ev.window.data2 *= winy / ptsy ;
 			if (clotrp && (ev.window.event == SDL_WINDOWEVENT_CLOSE))
 				{
 					putevt (clotrp, WM_CLOSE, 0, ev.window.windowID) ;
@@ -1598,8 +1699,6 @@ static int maintick (void)
 				}
 			if (siztrp)
 			{
-				ev.window.data1 *= winx / ptsx ;
-				ev.window.data2 *= winy / ptsy ;
 				switch (ev.window.event)
 				{
 					case SDL_WINDOWEVENT_MOVED :
@@ -1614,6 +1713,18 @@ static int maintick (void)
 				}
 				flags |= ALERT ;
 			}
+			else if (ev.window.event == SDL_WINDOWEVENT_RESIZED)
+			{
+				if ((ev.window.data1 * sizey) > (ev.window.data2 * sizex))
+					zoom = 0x8000LL * ev.window.data2 / sizey ;
+				else
+					zoom = 0x8000LL * ev.window.data1 / sizex ;
+				if (zoom < 0x8000) zoom = 0x8000 ;
+#if !defined(__ANDROID__) && !defined(__IPHONEOS__)
+				panx = (sizex - 0x8000LL * ev.window.data1 / zoom) / 2 ;
+				pany = (sizey - 0x8000LL * ev.window.data2 / zoom) / 2 ;
+#endif
+			}
 			break ;
 
 		case SDL_MOUSEWHEEL:
@@ -1623,7 +1734,14 @@ static int maintick (void)
 				putkey (0x8C) ;
 			break ;
 
+		case SDL_APP_WILLENTERBACKGROUND:
+			target = SDL_GetRenderTarget (renderer) ;
+			SDL_SetRenderTarget (renderer, NULL) ;
+			break ;
+
 		case SDL_APP_DIDENTERFOREGROUND:
+			if (target) SDL_SetRenderTarget (renderer, target) ;
+
 			bBackground = -FGDLY ;
 			bChanged = 1 ;
 			if (siztrp)
@@ -1635,15 +1753,28 @@ static int maintick (void)
 			break ;
 
 		case SDL_RENDER_DEVICE_RESET:
+		case SDL_RENDER_TARGETS_RESET:
 			{
 				int w, h ;
-				SDL_Texture **p ;
+				SDL_Texture **p, *t = SDL_GetRenderTarget (renderer) ;
 				SDL_GL_GetDrawableSize (window, &w, &h) ;
 				SDL_SetRenderTarget(renderer, SDL_CreateTexture(renderer, 
 					SDL_PIXELFORMAT_ABGR8888, SDL_TEXTUREACCESS_TARGET,
 					MAX(MAX(w,h),XSCREEN), MAX(MAX(w,h),YSCREEN))) ;
+				if (t != NULL) SDL_DestroyTexture (t) ;
 				for (p = TTFcache; p < TTFcache + 65536; p++)
-					*p = NULL ;
+					if (*p != NULL)
+					{
+						SDL_DestroyTexture (*p) ;
+						*p = NULL ;
+					}
+				buttexture = MakeBackButton (renderer) ;
+				if (siztrp)
+					{
+						// Signal 'render device/targets reset'
+						putevt (siztrp, WM_SIZE, -1, (h << 16) | w) ; 
+						flags |= ALERT ;
+					}
 			}
 			break ;
 		}

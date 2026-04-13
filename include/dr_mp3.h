@@ -438,7 +438,7 @@ static __inline__ __attribute__((always_inline)) void drmp3_cpuid(int CPUInfo[],
 #endif
 }
 #endif
-static int drmp3_have_simd()
+static int drmp3_have_simd(void)
 {
 #ifdef DR_MP3_ONLY_SIMD
     return 1;
@@ -478,7 +478,7 @@ end:
 #define DRMP3_VMUL_S(x, s)  vmulq_f32(x, vmovq_n_f32(s))
 #define DRMP3_VREV(x) vcombine_f32(vget_high_f32(vrev64q_f32(x)), vget_low_f32(vrev64q_f32(x)))
 typedef float32x4_t drmp3_f4;
-static int drmp3_have_simd()
+static int drmp3_have_simd(void)
 {   /* TODO: detect neon for !DR_MP3_ONLY_SIMD */
     return 1;
 }
@@ -2820,8 +2820,16 @@ static drmp3_bool32 drmp3__on_seek_stdio(void* pUserData, int offset, drmp3_seek
 drmp3_bool32 drmp3_init_file(drmp3* pMP3, const char* filePath, const drmp3_config* pConfig)
 {
     FILE* pFile;
+
 #if defined(_MSC_VER) && _MSC_VER >= 1400
     if (fopen_s(&pFile, filePath, "rb") != 0) {
+        return DRMP3_FALSE;
+    }
+#elif defined(_WIN32)
+    WCHAR wfp[MAX_PATH];
+    MultiByteToWideChar(CP_UTF8, 0, filePath, -1, wfp, MAX_PATH);
+    pFile = _wfopen(wfp, L"rb");
+    if (pFile == NULL) {
         return DRMP3_FALSE;
     }
 #else

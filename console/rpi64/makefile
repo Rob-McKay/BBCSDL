@@ -1,24 +1,21 @@
 VPATH = ../../src ../../include ../../../BBCSDL/src ../../../BBCSDL/include
 CXX = gcc -Wall -I ../../include -I ../../../BBCSDL/include
 
-OBJ = bbmain.o bbexec.o bbeval.o bbasmb.o bbdata.o bbccos.o bbccon.o sort.o
+OBJ = bbmain.o bbexec.o bbeval.o bbasmb.o bbdata.o bbccos.o bbccon.o
 
 all: bbcbasic
 
 bbmain.o: bbmain.c BBC.h
-	$(CXX) -Wno-attributes -c -O2 $< -o $@
+	$(CXX) -Wno-attributes -c -O2 -ffast-math -fno-finite-math-only $< -o $@
 
 bbexec.o: bbexec.c BBC.h
-	$(CXX) -c -O2 $< -o $@
+	$(CXX) -c -O2 -ffast-math -fno-finite-math-only $< -o $@
 
 bbeval.o: bbeval.c BBC.h
-	$(CXX) -Wno-array-bounds -c -O2 $< -o $@
+	$(CXX) -Wno-array-bounds -c -O2 -ffast-math -fmath-errno -fno-finite-math-only $< -o $@
 
 bbasmb.o: bbasmb_arm_64.c BBC.h
 	$(CXX) -c -Os $< -o $@
-
-sort.o: sort.c
-	$(CXX) -c -O3 $< -o $@
 
 bbccos.o: bbccos.c bbccon.h
 	$(CXX) -Wno-array-bounds -Wno-unused-result -c -Os $< -o $@

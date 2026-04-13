@@ -1,10 +1,10 @@
 # BBCSDL
-BBC BASIC for SDL 2.0 is a cross-platform implementation of the BBC BASIC programming language for
+BBC BASIC for SDL 2.0 (BBCSDL) is a cross-platform implementation of the BBC BASIC programming language for
 Windows, Linux (x86), MacOS, Raspbian (Raspberry Pi OS), Android, iOS and Emscripten / WebAssembly.
 It is highly compatible with BBC BASIC for Windows and has the same language extensions, but uses
 SDL 2.0 as an OS abstraction layer to achieve cross-platform compatibility.
 
-The BBC BASIC Console Mode editions are lightweight implementations for Windows, Linux (x86),
+The BBC BASIC Console Mode editions (BBCTTY) are lightweight implementations for Windows, Linux (x86),
 MacOS and Raspbian (Raspberry Pi OS) which do not support graphics or sound but are otherwise 
 compatible with the desktop, mobile and web editions.  They take their input from stdin and
 send their output to stdout, so may be used for scripting, CGI and remote terminal applications.
@@ -22,3 +22,6 @@ convenient place to put the function wrappers needed to support SYS in the in-br
 
 Not indicated in the diagram is that the in-browser edition uses different versions of bbc.h
 and bbcsdl.h from the rest.
+
+Note that the name 'BBC BASIC' is used by permission of the British Broadcasting Corporation
+and is not transferrable to a derived or forked work.

@@ -1,18 +1,20 @@
 /*****************************************************************\
 *       32-bit or 64-bit BBC BASIC Interpreter                    *
-*       (C) 2017-2023  R.T.Russell  http://www.rtrussell.co.uk/   *
+*       (C) 2017-2026  R.T.Russell  http://www.rtrussell.co.uk/   *
 *                                                                 *
 *       The name 'BBC BASIC' is the property of the British       *
-*       Broadcasting Corporation and used with their permission   *
+*       Broadcasting Corporation and used with their permission,  *
+*       it is not transferrable to a forked or derived work.      *
 *                                                                 *
 *       bbeval.c: Expression evaluation, functions and arithmetic *
-*       Version 1.35a, 22-Mar-2023                                *
+*       Version 1.43c, 03-Feb-2026                                *
 \*****************************************************************/
 
 #define __USE_MINGW_ANSI_STDIO 1
 
 #include <stdlib.h>
 #include <stdio.h>
+#include <stdint.h>
 #include <unistd.h>
 #include <string.h>
 #include <math.h>
@@ -92,6 +94,7 @@ long long getptr (void*) ;	// Get file pointer
 long long getext (void*) ;	// Get file length
 long long geteof (void*) ;	// Get EOF status
 void *sysadr (char *) ;		// Get the address of an API function
+int getmodeno (void) ;		// Get the current MODE number
 
 // Global jump buffer:
 extern jmp_buf env ;
@@ -179,27 +182,31 @@ int str (VAR v, char *dst, int format)
 // Convert a numeric value to a NUL-terminated hexadecimal string:
 int strhex (VAR v, char *dst, int field)
 {
-	char fmt[12] ;
-	long long n ;
-
 #ifdef _WIN32
-	sprintf (fmt, "%%%uI64X", field) ;
+	char fmt[7] = "%*I64X" ;
 #else
-	sprintf (fmt, "%%%ullX", field) ;
+	char fmt[6] = "%*llX" ;
 #endif
+	long long n ;
 
 	if (v.i.t)
 	    {
-		long long t = v.f ;
-		if (t != truncl (v.f))
+		n = v.f ;
+		if (n != truncl (v.f))
 			error (20, NULL) ; // 'Number too big'
-		v.i.n = t ;
+	    }
+	else
+		n = v.i.n ;
+
+	if ((liston & BIT2) == 0)
+	    {
+		int i = n ;
+		if (i != n)
+			error (20, NULL) ; // 'Number too big'
+		n &= 0xFFFFFFFF ;
 	    }
 
-	n = v.i.n ; // copy because v is effectively passed-by-reference
-	if ((liston & BIT2) == 0)
-		n &= 0xFFFFFFFF ;
-	return sprintf(dst, fmt, n) ;
+	return sprintf(dst, fmt, field, n) ;
 }
 
 // Multiply by an integer-power of 10:
@@ -353,7 +360,7 @@ VAR cons (void)
 }
 
 // Load a numeric variable:
-// type is 1, 4, 5, 8, 10, 36 or 40
+// type is 1, 4, 5, 8, 10, 32, 36 or 40
 VAR loadn (void *ptr, unsigned char type)
 {
 	VAR v ;
@@ -422,6 +429,15 @@ VAR loadn (void *ptr, unsigned char type)
 			memcpy (&v.s.p, ptr, 8) ; // may be unaligned
 			break ;
 
+		case 32:
+			{
+			union { int i; float f; } u ;
+			u.i = ILOAD(ptr) ;
+			v.i.t = 1 ; // ARM
+			v.f = u.f ;
+			break ;
+			}
+
 		case 36:
 			v.i.t = 0 ;
 			v.i.n = (intptr_t) VLOAD(ptr) ;
@@ -443,8 +459,8 @@ VAR loads (void *ptr, unsigned char type)
 	switch (type)
 	    {
 		case 128:
-			v.s.l = memchr (ptr, 0x0D, 0x10000) - ptr ;
-			if (v.s.l > 0xFFFF)
+			v.s.l = memchr (ptr, 0x0D, 0x1000000) - ptr ;
+			if (v.s.l > 0xFFFFFF)
 				error (19, NULL) ; // 'String too long'
 			if ((ptr < zero) || ((ptr + v.s.l) > (zero + 0xFFFFFFFF)))
 			    {
@@ -571,7 +587,7 @@ VAR math (VAR x, signed char op, VAR y)
 		case '+':
 			if ((x.i.t == 0) && (y.i.t == 0))
 			    {
-#if defined __GNUC__ && __GNUC__ < 5
+#if !(defined(__GNUC__) && (__GNUC__ >= 7) || defined(__clang__) && (__clang_major__ >= 4))
 				long long sum = x.i.n + y.i.n ;
 				if (((int)(x.s.l ^ y.s.l) < 0) || ((sum ^ x.i.n) >= 0))
 #else
@@ -590,7 +606,7 @@ VAR math (VAR x, signed char op, VAR y)
 		case '-':
 			if ((x.i.t == 0) && (y.i.t == 0))
 			    {
-#if defined __GNUC__  && __GNUC__ < 5
+#if !(defined(__GNUC__) && (__GNUC__ >= 7) || defined(__clang__) && (__clang_major__ >= 4))
 				long long dif = x.i.n - y.i.n ;
 				if (((int)(x.s.l ^ y.s.l) >= 0) || ((dif ^ x.i.n) >= 0))
 #else
@@ -613,19 +629,26 @@ VAR math (VAR x, signed char op, VAR y)
 				return y ;
 			if ((x.i.t == 0) && (y.i.t == 0))
 			    {
-#if defined __GNUC__  && __GNUC__ < 5
-				long long prod = x.i.n * y.i.n ;
-				if ((x.i.n != 0x8000000000000000) && (y.i.n != 0x8000000000000000) &&
-					((__builtin_clzll(x.i.n) + __builtin_clzll(~x.i.n) +
-					  __builtin_clzll(y.i.n) + __builtin_clzll(~y.i.n)) > 63))
+#if !(defined(__GNUC__) && (__GNUC__ >= 7) || defined(__clang__) && (__clang_major__ >= 4))
+				int lz = __builtin_clzll(x.i.n) + __builtin_clzll(~x.i.n) +
+			                 __builtin_clzll(y.i.n) + __builtin_clzll(~y.i.n) ;
+				if ((lz > 64) || ((lz == 64) && (
+				  ((x.i.n >= 0) && (y.i.n >= 0) && (x.i.n <= INT64_MAX / y.i.n)) ||
+				  ((x.i.n >= 0) && (y.i.n < 0)  && (x.i.n <= INT64_MIN / y.i.n)) ||
+				  ((x.i.n < 0)  && (y.i.n >= 0) && (y.i.n <= INT64_MIN / x.i.n)) ||
+				  ((x.i.n < 0)  && (y.i.n < 0)  && (y.i.n >= INT64_MAX / x.i.n)))))
+				    {
+					x.i.n *= y.i.n ;
+					return x ;
+				    }
 #else
 				long long prod ;
 				if (! __builtin_smulll_overflow (x.i.n, y.i.n, &prod))
-#endif
 				    {
 					x.i.n = prod ;
 					return x ;
 				    }
+#endif
 			    }
 			float2 (&x, &y) ;
 			x.f *= y.f ;
@@ -842,7 +865,9 @@ VAR val (void)
 	while (*esi == ' ') esi++ ;
 	if (*esi == '-')
 	    {
-		VAR z = {0} ;
+		VAR z ;
+		z.i.n = 0 ;
+		z.i.t = 0 ;
 		esi++ ;
 		v = math (z, '-', con ()) ;
 	    }
@@ -943,7 +968,7 @@ void *channel (void)
 
 static int dimfunc (void)
 {
-	int d, n ;
+	unsigned int d, n ;
 	void *ptr ;
 	unsigned char type ;
 	if (nxt () == '(')
@@ -975,7 +1000,7 @@ static int dimfunc (void)
 		return d;
 	esi++ ;
 	n = expri () - 1 ;
-	if ((n < 0) || (n >= d))
+	if (n > (d - 1 + (d == 0)))
 		error (15, NULL) ; // 'Bad subscript'
 	return ILOAD(ptr + 1 + n * 4) - 1 ;
 }
@@ -987,6 +1012,25 @@ VAR item (void)
 	esi++ ;
 	switch (al)
 	    {
+#if defined (REDUCE_STACK_SIZE) && defined(__GNUC__) && !defined(__llvm__)
+		auto void nestedFN(void);
+		auto void nestedUSR(void);
+		auto void nestedPTR(void);
+		auto void nestedGETS(void);
+		auto void nestedLOG(void);
+		auto void nestedMOD(void);
+		auto void nestedSUM(void);
+		auto void nestedMID(void);
+		auto void nestedADDR(void);
+		auto void nestedEVAL(void);
+		auto void nestedLEFT(void);
+		auto void nestedTINT(void);
+		auto void nestedINSTR(void);
+		auto void nestedPOINT(void);
+		auto void nestedRIGHT(void);
+		auto void nestedSTRING(void);
+		auto VAR nesteddefault(void);
+#endif
 
 /************************* Parenthesised expression ****************************/
 
@@ -1000,6 +1044,10 @@ VAR item (void)
 /************************************* FN **************************************/
 
 		case TFN:
+#if defined (REDUCE_STACK_SIZE) && defined(__GNUC__) && !defined(__llvm__)
+		nestedFN();
+		void __attribute__ ((noinline)) nestedFN(void)
+#endif
 			{
 			int errcode = 0 ;
 			jmp_buf savenv ;
@@ -1030,6 +1078,10 @@ VAR item (void)
 /************************************* USR *************************************/
 
 		case TUSR:
+#if defined (REDUCE_STACK_SIZE) && defined(__GNUC__) && !defined(__llvm__)
+		nestedUSR();
+		void __attribute__ ((noinline)) nestedUSR(void)
+#endif
 			{
 			int (*func) (int,int,int,int,int,int) ;
 			size_t n = itemi () ;
@@ -1090,6 +1142,11 @@ VAR item (void)
 /************************************* PTR *************************************/
 
 		case TPTRR:
+#if defined (REDUCE_STACK_SIZE) && defined(__GNUC__) && !defined(__llvm__)
+		nestedPTR();
+		void __attribute__ ((noinline)) nestedPTR(void)
+#endif
+		    {
 			if (*esi == '(')
 			    {
 				void *ptr ;
@@ -1118,36 +1175,28 @@ VAR item (void)
 				v.i.t = 0 ;
 				v.i.n = getptr (n) ;
 			    }
-			return v ;
+		    }
+		return v ;
 
 /************************************* EXT *************************************/
 
 		case TEXTR:
-			{
-			void *n = channel () ;
 			v.i.t = 0 ;
-			v.i.n = getext (n) ;
-			}
+			v.i.n = getext (channel ()) ;
 			return v ;
 
 /************************************* EOF *************************************/
 
 		case TEOF:
-			{
-			void *n = channel () ;
 			v.i.t = 0 ;
-			v.i.n = geteof (n) ;
-			}
+			v.i.n = geteof (channel ()) ;
 			return v ;
 
 /************************************ BGET *************************************/
 
 		case TBGET:
-			{
-			void *n = channel () ;
 			v.i.t = 0 ;
-			v.i.n = osbget (n, NULL) ;
-			}
+			v.i.n = osbget (channel (), NULL) ;
 			return v ;
 
 /************************************ PAGE *************************************/
@@ -1194,7 +1243,7 @@ VAR item (void)
 /************************************ MODE *************************************/
 
 		case TMODE:
-			v.i.n = modeno ;
+			v.i.n = getmodeno() ;
 			v.i.t = 0 ;
 			return v ;
 
@@ -1233,7 +1282,7 @@ VAR item (void)
 			if (*esi == '(')
 			    {
 				esi++ ;
-				VAR v = exprs () ;
+				v = exprs () ;
 				braket () ;
 				if (v.s.l > ((char *)esp - (char *)zero - pfree - STACK_NEEDED))
 					error (0, NULL) ; // 'No room'
@@ -1255,6 +1304,7 @@ VAR item (void)
 /************************************* GET *************************************/
 
 		case TGET:
+			{
 			if (*esi == '(')
 			    {
 				int x, y ;
@@ -1265,15 +1315,23 @@ VAR item (void)
 				braket () ;
 				v.i.n = vgetc (x, y) ;
 				v.i.t = 0 ;
-				return v ;
 			    }
-			v.i.n = osrdch () ;
-			v.i.t = 0 ;
+			else
+			    {
+				v.i.n = osrdch () ;
+				v.i.t = 0 ;
+			    }
+			}
 			return v ;
 
 /************************************ GET$ *************************************/
 
 		case TGETS:
+#if defined (REDUCE_STACK_SIZE) && defined(__GNUC__) && !defined(__llvm__)
+		nestedGETS();
+		void __attribute__ ((noinline)) nestedGETS(void)
+#endif
+		    {
 			if (*esi == '#')
 			    {
 				char *p ;
@@ -1312,9 +1370,8 @@ VAR item (void)
 				v.s.p = pfree ;
 				v.s.l = p - (char *) zero - pfree ;
 				v.s.p = moves ((STR *) &v, 0) - (char *) zero ;
-				return v ;
 			    }
-			if (*esi == '(')
+			else if (*esi == '(')
 			    {
 				int c, x, y ;
 				esi++ ;
@@ -1330,13 +1387,16 @@ VAR item (void)
 					v.s.l = 0 ;
 				else
 					v.s.l = strlen (accs) ;
-				return v ;
 			    }
-			*accs = osrdch () ;
-			v.s.t = -1 ;
-			v.s.p = accs - (char *) zero ;
-			v.s.l = 1 ;
-			return v ;
+			else
+			    {
+				*accs = osrdch () ;
+				v.s.t = -1 ;
+				v.s.p = accs - (char *) zero ;
+				v.s.l = 1 ;
+			    }
+		    }
+		return v ;
 
 /************************************ INKEY ************************************/
 
@@ -1382,6 +1442,10 @@ VAR item (void)
 /************************************ TINT *************************************/
 
 		case TTINT:
+#if defined (REDUCE_STACK_SIZE) && defined(__GNUC__) && !defined(__llvm__)
+		nestedTINT();
+		void __attribute__ ((noinline)) nestedTINT(void)
+#endif
 			{
 			int p, x, y ;
 			if (*esi++ != '(')
@@ -1399,6 +1463,10 @@ VAR item (void)
 /*********************************** TPOINT ************************************/
 
 		case TPOINT:
+#if defined (REDUCE_STACK_SIZE) && defined(__GNUC__) && !defined(__llvm__)
+		nestedPOINT();
+		void __attribute__ ((noinline)) nestedPOINT(void)
+#endif
 			{
 			int p, x, y ;
 			x = expri () ;
@@ -1500,32 +1568,26 @@ VAR item (void)
 /************************************* DEG *************************************/
 
 		case TDEG:
-			{
-			VAR xdeg ;
 #if defined __arm__ || defined __aarch64__ || defined __EMSCRIPTEN__ || defined __ANDROID__
-			xdeg.i.n = 0x404CA5DC1A63C1F8L ;
-			xdeg.i.t = 1 ;
+			v.i.n = 0x404CA5DC1A63C1F8L ;
+			v.i.t = 1 ;
 #else
-			xdeg.i.n = 0xE52EE0D31E0FBDC3L ;
-			xdeg.i.t = 0x4004 ;
+			v.i.n = 0xE52EE0D31E0FBDC3L ;
+			v.i.t = 0x4004 ;
 #endif
-			return math (itemf(), '*', xdeg) ;
-			}
+			return math (itemf(), '*', v) ;
 
 /************************************* RAD *************************************/
 
 		case TRAD:
-			{
-			VAR xrad ;
 #if defined __arm__ || defined __aarch64__ || defined __EMSCRIPTEN__ || defined __ANDROID__
-			xrad.i.n = 0x3F91DF46A2529D39L ;
-			xrad.i.t = 1 ;
+			v.i.n = 0x3F91DF46A2529D39L ;
+			v.i.t = 1 ;
 #else
-			xrad.i.n = 0x8EFA351294E9C8AEL ;
-			xrad.i.t = 0x3FF9 ;
+			v.i.n = 0x8EFA351294E9C8AEL ;
+			v.i.t = 0x3FF9 ;
 #endif
-			return math (itemf(), '*', xrad) ;
-			}
+			return math (itemf(), '*', v) ;
 
 /************************************* EXP *************************************/
 
@@ -1546,6 +1608,10 @@ VAR item (void)
 /************************************* LOG *************************************/
 
 		case TLOG:
+#if defined (REDUCE_STACK_SIZE) && defined(__GNUC__) && !defined(__llvm__)
+		nestedLOG();
+		void __attribute__ ((noinline)) nestedLOG(void)
+#endif
 			{
 			VAR loge ;
 #if defined __arm__ || defined __aarch64__ || defined __EMSCRIPTEN__ || defined __ANDROID__
@@ -1559,8 +1625,9 @@ VAR item (void)
 			v.f = logl (v.f );
 			if (isnan (v.f) || isinf (v.f))
 				error (22, NULL) ; // 'Logarithm range'
-			return math (v, '*', loge) ;
+			v = math (v, '*', loge) ;
 			}
+			return v ;
 
 /************************************* SQR *************************************/
 
@@ -1573,6 +1640,10 @@ VAR item (void)
 /************************************* MOD *************************************/
 
 		case TMOD:
+#if defined (REDUCE_STACK_SIZE) && defined(__GNUC__) && !defined(__llvm__)
+		nestedMOD();
+		void __attribute__ ((noinline)) nestedMOD(void)
+#endif
 			{
 			int i, count ;
 			unsigned char type ;
@@ -1591,7 +1662,30 @@ VAR item (void)
 			for (i = 0; i < count; i++)
 			    {
 				VAR x = loadn (ptr, type) ; // n.b. type can be 40
+#if !(defined(__GNUC__) && (__GNUC__ >= 7) || defined(__clang__) && (__clang_major__ >= 4))
 				v = math (v, '+', math (x, '*', x)) ;
+#else
+				long long tmp ;
+				if ((x.i.t == 0) && ! __builtin_smulll_overflow (x.i.n, x.i.n, &tmp))
+					x.i.n = tmp ;
+				else
+				    {
+					xfloat (&x) ;
+					x.f *= x.f ;
+					if (x.i.t == 0)
+						x.f = 0.0 ; // Underflow
+				    }
+				if ((v.i.t == 0) && (x.i.t == 0) &&
+				    ! __builtin_saddll_overflow (v.i.n, x.i.n, &tmp))
+					v.i.n = tmp ;
+				else
+				    {
+					float2 (&v, &x) ;
+					v.f += x.f ;
+					if (isinf(v.f) || (v.i.t == -1))
+						error (20, NULL) ; // 'Number too big'
+				    }
+#endif
 				ptr += type & TMASK ;
 			    }
 			if (v.i.t == 0)
@@ -1606,6 +1700,10 @@ VAR item (void)
 /************************************* SUM *************************************/
 
 		case TSUM:
+#if defined (REDUCE_STACK_SIZE) && defined(__GNUC__) && !defined(__llvm__)
+		nestedSUM();
+		void __attribute__ ((noinline)) nestedSUM(void)
+#endif
 			{
 			VAR x ;
 			int count ;
@@ -1630,7 +1728,24 @@ VAR item (void)
 				type &= ~BIT6 ;
 				while (count--)
 				    {
+#if !(defined(__GNUC__) && (__GNUC__ >= 7) || defined(__clang__) && (__clang_major__ >= 4))
 					v = math (v, '+', loadn (ptr, type)) ; // n.b. type can be 40
+#else
+					long long sum ;
+					x = loadn (ptr, type) ; // n.b. type can be 40
+					if ((v.i.t == 0) && (x.i.t == 0) &&
+					    (! __builtin_saddll_overflow (v.i.n, x.i.n, &sum)))
+						v.i.n = sum ;
+					else
+					    {
+						float2 (&v, &x) ;
+						v.f += x.f ;
+						if (isinf(v.f) || (v.i.t == -1))
+							error (20, NULL) ; // 'Number too big'
+						if ((v.i.t == 0) || (v.i.t == (short) 0x8000))
+							v.f = 0.0 ; // Underflow
+					    }
+#endif
 					ptr += type & TMASK ;
 				    }
 			    }
@@ -1708,12 +1823,13 @@ VAR item (void)
 			v = itemf () ;
 			v.f = floorl (v.f) ;
 			tmp = v.f ;
-			if (v.f != tmp)
-				return v ;
-			v.i.n = tmp ;
-			v.i.t = 0 ;
-			return v ;
+			if (v.f == tmp)
+			    {
+				v.i.n = tmp ;
+				v.i.t = 0 ;
+			    }
 			}
+			return v ;
 
 /************************************* NOT *************************************/
 
@@ -1770,15 +1886,17 @@ VAR item (void)
 /************************************* VAL *************************************/
 
 		case TVAL:
-			{
 			v = items () ;
 			fixs (v) ;
 			return val () ;
-			}
 
 /************************************ EVAL *************************************/
 
 		case TEVAL:
+#if defined (REDUCE_STACK_SIZE) && defined(__GNUC__) && !defined(__llvm__)
+		nestedEVAL();
+		void __attribute__ ((noinline)) nestedEVAL(void)
+#endif
 			{
 			signed char *oldesi ;
 			heapptr *oldesp ;
@@ -1793,8 +1911,8 @@ VAR item (void)
 			v = expr () ;
 			esi = oldesi ;
 			esp = oldesp ;
-			return v ;
 			}
+			return v ;
 
 /************************************ STR$ *************************************/
 
@@ -1828,6 +1946,10 @@ VAR item (void)
 /************************************ MID$ *************************************/
 
 		case TMID:
+#if defined (REDUCE_STACK_SIZE) && defined(__GNUC__) && !defined(__llvm__)
+		nestedMID();
+		void __attribute__ ((noinline)) nestedMID(void)
+#endif
 			{
 			heapptr *oldesp ;
 			char * tmp ;
@@ -1860,20 +1982,25 @@ VAR item (void)
 				esp = oldesp ;
 				v.s.p = 0 ;
 				v.s.l = 0 ;
-				return v ;
 			    }
-
-			v.s.p = (char *) esp - (char *) zero + s - 1 ;
-			v.s.l = n ;
-			tmp = moves ((STR*) &v, 0) ;
-			esp = oldesp ;
-			v.s.p = tmp - (char *) zero ;
+			else
+			    {
+				v.s.p = (char *) esp - (char *) zero + s - 1 ;
+				v.s.l = n ;
+				tmp = moves ((STR*) &v, 0) ;
+				esp = oldesp ;
+				v.s.p = tmp - (char *) zero ;
+			    }
 			}
 			return v ;
 
 /*********************************** LEFT$ *************************************/
 
 		case TLEFT:
+#if defined (REDUCE_STACK_SIZE) && defined(__GNUC__) && !defined(__llvm__)
+		nestedLEFT();
+		void __attribute__ ((noinline)) nestedLEFT(void)
+#endif
 			{
 			heapptr *oldesp ;
 			char * tmp ;
@@ -1885,28 +2012,33 @@ VAR item (void)
 				braket () ;
 				if (v.s.l)
 					v.s.l -= 1 ;
-				return v ;
 			    }
+			else
+			    {
+				esi++ ;
+				oldesp = pushs (v) ;
+				n = expri () ;
+				braket () ;
 
-			esi++ ;
-			oldesp = pushs (v) ;
-			n = expri () ;
-			braket () ;
+				if ((n < 0) || (n > v.s.l))
+					n = v.s.l ;
 
-			if ((n < 0) || (n > v.s.l))
-				n = v.s.l ;
-
-			v.s.p = (char *) esp - (char *) zero ;
-			v.s.l = n;
-			tmp = moves ((STR*) &v, 0) ;
-			esp = oldesp ;
-			v.s.p = tmp - (char *) zero ;
+				v.s.p = (char *) esp - (char *) zero ;
+				v.s.l = n;
+				tmp = moves ((STR*) &v, 0) ;
+				esp = oldesp ;
+				v.s.p = tmp - (char *) zero ;
+			    }
 			}
 			return v ;
 
 /*********************************** RIGHT$ ************************************/
 
 		case TRIGHT:
+#if defined (REDUCE_STACK_SIZE) && defined(__GNUC__) && !defined(__llvm__)
+		nestedRIGHT();
+		void __attribute__ ((noinline)) nestedRIGHT(void)
+#endif
 			{
 			heapptr *oldesp ;
 			char * tmp ;
@@ -1921,28 +2053,33 @@ VAR item (void)
 					v.s.p += (int)v.s.l - 1 ;
 					v.s.l = 1 ;
 				    }
-				return v ;
 			    }
+			else
+			    {
+				esi++ ;
+				oldesp = pushs (v) ;
+				n = expri () ;
+				braket () ;
 
-			esi++ ;
-			oldesp = pushs (v) ;
-			n = expri () ;
-			braket () ;
+				if ((n < 0) || (n > v.s.l))
+					n = v.s.l ;
 
-			if ((n < 0) || (n > v.s.l))
-				n = v.s.l ;
-
-			v.s.p = (char *) esp - (char *) zero + v.s.l - n ;
-			v.s.l = n;
-			tmp = moves ((STR*) &v, 0) ;
-			esp = oldesp ;
-			v.s.p = tmp - (char *) zero ;
+				v.s.p = (char *) esp - (char *) zero + v.s.l - n ;
+				v.s.l = n;
+				tmp = moves ((STR*) &v, 0) ;
+				esp = oldesp ;
+				v.s.p = tmp - (char *) zero ;
+			    }
 			}
 			return v ;
 
 /*********************************** STRING$ ***********************************/
 
 		case TSTRING:
+#if defined (REDUCE_STACK_SIZE) && defined(__GNUC__) && !defined(__llvm__)
+		nestedSTRING();
+		void __attribute__ ((noinline)) nestedSTRING(void)
+#endif
 			{
 			char *tmp, *p ;
 			long long size, n = expri () ;
@@ -1953,22 +2090,28 @@ VAR item (void)
 			    {
 				v.s.p = 0 ;
 				v.s.l = 0 ;
-				return v ;
 			    }
-			size = n * v.s.l ;
-			if (size > 0x7FFFFFFF)
-				error (19, NULL) ; // 'String too long'
-			tmp = alloct (size) ;
-			for (p = tmp ; n-- ; p += v.s.l)
-				memcpy (p, v.s.p + zero , v.s.l) ;
-			v.s.p = tmp - (char *) zero ;
-			v.s.l = size ;
+			else
+			    {
+				size = n * v.s.l ;
+				if (size > 0x7FFFFFFF)
+					error (19, NULL) ; // 'String too long'
+				tmp = alloct (size) ;
+				for (p = tmp ; n-- ; p += v.s.l)
+					memcpy (p, v.s.p + zero , v.s.l) ;
+				v.s.p = tmp - (char *) zero ;
+				v.s.l = size ;
+			    }
 			}
 			return v ;
 
 /*********************************** INSTR *************************************/
 
 		case TINSTR:
+#if defined (REDUCE_STACK_SIZE) && defined(__GNUC__) && !defined(__llvm__)
+		nestedINSTR();
+		void __attribute__ ((noinline)) nestedINSTR(void)
+#endif
 			{
 			heapptr *oldesp ;
 			int n = 0 ;
@@ -1994,25 +2137,25 @@ VAR item (void)
 				v.i.t = 0 ;
 				v.i.n = 0 ;
 				esp = oldesp ;
-				return v ;
 			    }
-
-			p = x.s.p + n + (char *) zero ;
-			while (p != NULL)
+			else
 			    {
-				if (0 == memcmp (p, v.s.p + zero, v.s.l))
+				p = x.s.p + n + (char *) zero ;
+				n = 0 ;
+				while (p != NULL)
 				    {
-					v.i.t = 0 ;
-					v.i.n = p - (char *) zero - x.s.p + 1 ;
-					esp = oldesp ;
-					return v ;
+					if (0 == memcmp (p, v.s.p + zero, v.s.l))
+					    {
+						n = p - (char *) zero - x.s.p + 1 ;
+						break ;
+					    }
+					p = memchr (p + 1, *(v.s.p + (char *) zero),
+							x.s.p + x.s.l - v.s.l + (char *) zero - p) ;
 				    }
-				p = memchr (p + 1, *(v.s.p + (char *) zero),
-						x.s.p + x.s.l - v.s.l + (char *) zero - p) ;
+				v.i.t = 0 ;
+				v.i.n = n ;
+				esp = oldesp ;
 			    }
-			v.i.t = 0 ;
-			v.i.n = 0 ;
-			esp = oldesp ;
 			}
 			return  v ;
 
@@ -2079,8 +2222,8 @@ VAR item (void)
 			if ((liston & BIT2) == 0)
 				v.i.n = (v.i.n << 32) >> 32 ;
 			v.i.t = 0 ;
-			return v ;
 			}
+			return v ;
 
 /****************************** Binary constant ********************************/
 
@@ -2099,8 +2242,8 @@ VAR item (void)
 				v.i.n = (v.i.n << 32) >> 32 ;
 			v.i.t = 0 ;
 			esi-- ;
-			return v ;
 			}
+			return v ;
 
 /********************************* Unary plus **********************************/
 
@@ -2130,13 +2273,17 @@ VAR item (void)
 /***************************** Address-of operator *****************************/
 
 		case '^':
+#if defined (REDUCE_STACK_SIZE) && defined(__GNUC__) && !defined(__llvm__)
+		nestedADDR();
+		void __attribute__ ((noinline)) nestedADDR(void)
+#endif
 			{
 			unsigned char type ;
 			void *ptr = getput (&type) ;
 			v.i.t = 0 ;
 			v.i.n = (size_t) ptr ;
-			return v ;
 			}
+			return v ;
 
 /************************ Decimal constant or variable *************************/
 
@@ -2144,6 +2291,10 @@ VAR item (void)
 			esi-- ;
 			if (((al >= '0') && (al <= '9')) || (al == '.'))
 				return con() ;
+#if defined (REDUCE_STACK_SIZE) && defined(__GNUC__) && !defined(__llvm__)
+		return nesteddefault();
+		VAR __attribute__ ((noinline)) nesteddefault(void)
+#endif
 			{
 			unsigned char type ;
 			signed char *savesi = esi ;
@@ -2506,16 +2657,16 @@ int expra (void *ebp, int ecx, unsigned char type)
 				if (nxt () == '.') // dot product
 					break ;
 
-				if ((type != type2) || (ecx != arrlen(&ptr)))
+				if (((type < 128) != (type2 < 128)) || (ecx != arrlen(&ptr)))
 					error (6, NULL) ; // 'Type mismatch'
 				if (type < 128) // numeric array
 				    {
 					for (i = 0; i < ecx; i++)
 					    {
-						VAR v = loadn (ptr, type & ~BIT6) ;
+						VAR v = loadn (ptr, type2 & ~BIT6) ;
 						modify (v, ebp, type & ~BIT6, op) ;
 						ebp += type & TMASK ; // GCC extension
-						ptr += type & TMASK ; // GCC extension
+						ptr += type2 & TMASK ; // GCC extension
 					    }
 				    }
 				else // string array
@@ -2539,8 +2690,11 @@ int expra (void *ebp, int ecx, unsigned char type)
 					switch (op)
 					    {
 						case TOR:
-						case TAND:
 						case TEOR:
+							v = expr1 () ;
+							break ;
+
+						case TAND:
 							v = expr3 () ;
 							break ;
 
@@ -2580,20 +2734,11 @@ int expra (void *ebp, int ecx, unsigned char type)
 
 			ebp = savebp ;
 			op = nxt () ;
-			switch (op)
+			if ((op == '+') || (op == '-') || (op == '*') || (op == '/') ||
+				(op == '^') || ((op >= TAND) && (op <= TOR)))
 			    {
-				// TODO enforce left-to-right priority
-				case TOR:
-				case TAND:
-				case TEOR:
-				case '+':
-				case '-':
-				case '*':
-				case '/':
-				case TDIV:
-				case TMOD:
-					esi++ ;
-					continue ;
+				esi++ ;
+				continue ;
 			    }
 			break ;
 		    }
@@ -2613,7 +2758,7 @@ int expra (void *ebp, int ecx, unsigned char type)
 			error (16, NULL) ; // 'Syntax error'
 		if (type3 == 0)
 			error (26, NULL) ; // 'No such variable'
-		if ((type != type2) || (type != type3) || (type3 & BIT7))
+		if ((type2 != type3) || (type3 & BIT7))
 			error (6, NULL) ; // 'Type mismatch'
 		if (rhs < (void *)2)
 			error (14, NULL) ; // 'Bad use of array'
@@ -2633,8 +2778,7 @@ int expra (void *ebp, int ecx, unsigned char type)
 		else
 		    {
 			rowsl = 1 ;
-			colsl = ILOAD(ptr + 1) ;
-			ptr += 5 ;
+			colsl = arrlen (&ptr) ;
 		    }
 
 		if (dimsr == 2)
@@ -2646,15 +2790,15 @@ int expra (void *ebp, int ecx, unsigned char type)
 		else
 		    {
 			colsr = 1 ;
-			rowsr = ILOAD(rhs + 1) ;
-			rhs += 5 ;
+			rowsr = arrlen (&rhs) ;
 		    }
 
 		if ((colsl != rowsr) || (ecx != (colsr * rowsl)))
 			error (6, NULL) ; // 'Type mismatch'
 
 		type &= ~BIT6 ;
-		size = type & TMASK ;
+		type2 &= ~BIT6 ;
+		size = type2 & TMASK ;
 		for (i = 0; i < rowsl; i++)
 		    {
 			void *oldrhs = rhs ;
@@ -2662,14 +2806,44 @@ int expra (void *ebp, int ecx, unsigned char type)
 			    {
 				void *oldptr = ptr ;
 				void *oldrhs = rhs ;
+				VAR v = {0} ;
 				for (k = 0; k < colsl; k++)
 				    {
-					modify (math (loadn (ptr,type), '*', loadn (rhs,type)), 
-						ebp, type, '+') ;
+#if !(defined(__GNUC__) && (__GNUC__ >= 7) || defined(__clang__) && (__clang_major__ >= 4))
+					v = math( math (loadn (ptr,type2), '*', loadn (rhs,type2)), 
+						  '+', v) ;
+#else
+					long long tmp ;
+					VAR x = loadn (ptr, type2) ;
+					VAR y = loadn (rhs, type2) ;
+					if ((x.i.t == 0) && (y.i.t == 0) &&
+					    ! __builtin_smulll_overflow (x.i.n, y.i.n, &tmp))
+						x.i.n = tmp ;
+					else
+					    {
+						float2 (&x, &y) ;
+						x.f *= y.f ;
+						if (x.i.t == 0)
+							x.f = 0.0 ; // Underflow
+					    }
+					if ((v.i.t == 0) && (x.i.t == 0) &&
+					    ! __builtin_saddll_overflow (v.i.n, x.i.n, &tmp))
+						v.i.n = tmp ;
+					else
+					    {
+						float2 (&v, &x) ;
+						v.f += x.f ;
+						if (isinf(v.f) || (v.i.t == -1))
+							error (20, NULL) ; // 'Number too big'
+						if ((v.i.t == 0) || (v.i.t == (short) 0x8000))
+							v.f = 0.0 ; // Underflow
+					    }
+#endif
 					ptr += size ;
 					rhs += size * colsr ;
 				    }
-				ebp += size ;
+				storen (v, ebp, type) ;
+				ebp += (type & 15) ;
 				rhs = oldrhs + size ;
 				ptr = oldptr ;
 			    }

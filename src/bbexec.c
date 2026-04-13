@@ -1,12 +1,13 @@
 /*****************************************************************\
 *       32-bit or 64-bit BBC BASIC Interpreter                    *
-*       (C) 2017-2023  R.T.Russell  http://www.rtrussell.co.uk/   *
+*       (C) 2017-2026  R.T.Russell  http://www.rtrussell.co.uk/   *
 *                                                                 *
 *       The name 'BBC BASIC' is the property of the British       *
-*       Broadcasting Corporation and used with their permission   *
+*       Broadcasting Corporation and used with their permission,  *
+*       it is not transferrable to a forked or derived work.      *
 *                                                                 *
 *       bbexec.c: Variable assignment and statement execution     *
-*       Version 1.35a, 11-Mar-2023                                *
+*       Version 1.43c, 03-Feb-2026                                *
 \*****************************************************************/
 
 #include <string.h>
@@ -83,9 +84,13 @@ void *osopen (int, char *) ;	// Open a file
 unsigned char osbget (void *, int*) ; // Read a byte from a file
 void osbput (void *, unsigned char) ; // Write a byte to a file
 void setptr (void *, long long) ;	// Set the file pointer
+void setext (void *, long long) ;	// Set the file size
 long long getext (void *) ;	// Get file length
 void osshut (void *) ;		// Close file(s)
-void osload (char*, void *, int) ; // Load a file to memory
+void osload (char*, void *, unsigned int) ; // Load a file to memory
+#ifdef CAN_SET_RTC
+void putims (const char *) ;	// Set real-time-clock
+#endif
 
 // Routines in bbasmb:
 void assemble (void) ;
@@ -216,6 +221,7 @@ void storen (VAR v, void *ptr, unsigned char type)
 			v.d.d = v.f ;
 			if ((v.s.l == 0x7FF00000) || (v.s.l == 0xFFF00000))
 				error (20, NULL) ; // 'Number too big'
+			if (v.s.l == 0) v.d.d = 0.0 ;
 			USTORE(ptr, v.s.p) ;
 			USTORE((char *)ptr + 4, v.s.l) ;
 			}
@@ -240,6 +246,19 @@ void storen (VAR v, void *ptr, unsigned char type)
 			// *(int *)((char *)ptr + 4) = v.s.l ;
 			memcpy (ptr, &v.s.p, 8) ; // may be unaligned
 			break ;
+
+		case 32:
+			{
+			union { int i; float f; } u ;
+			if (v.i.t == 0)
+				v.f = v.i.n ;
+			u.f = v.f ;
+			if ((u.i == 0x7F800000) || (u.i == 0xFF800000))
+				error (20, NULL) ; // 'Number too big'
+			ISTORE(ptr, u.i) ;
+
+			break ;
+			}
 
 		case 36:
 			VSTORE(ptr, (void *) (size_t) v.i.n) ;
@@ -325,7 +344,7 @@ static void assign (void *ptr, unsigned char type)
 	if (op != '=')
 	    {
 		if ((op == '+') || (op == '-') || (op == '*') || (op == '/') ||
-			((op >= TAND) & (op <= TOR)))
+			(op == '^') || ((op >= TAND) && (op <= TOR)))
 			equals () ;
 		else
 			error (4, NULL) ; // Mistake
@@ -478,7 +497,7 @@ static void plot (int n, int x, int y)
 }
 
 // Create a 'secret' variable name based on code pointer, for use by PRIVATE:
-static char *secret (char *p, unsigned char type)
+char *secret (char *p, unsigned char type)
 {
 	unsigned int i, ebp = 54 , eax = esi - (signed char *) zero ;
 	eax = (eax << 1) | (eax > ((void *) esp - zero)) ; // library bit in LSB
@@ -950,7 +969,7 @@ static signed char* argue (signed char *ebx, heapptr *edi, int flag)
 }
 
 // Adjust the format pointers in nested structures to point into stack:
-static void fixup (void *edi, int ebx)
+static void fixup (void *edi, intptr_t ebx)
 {
 	edi += 4 ; // bump past size field (GCC extension)
 	while (1)
@@ -1082,6 +1101,7 @@ static void defscan (signed char *edx)
 			return ;
 		oldesi = esi ;
 		esi = edx + 1 ; // Byte after DEF
+		curlin = esi - (signed char *) zero ;
 		nxt () ;
 		if ((*esi == TPROC) || (*esi == TFN))
 		    {
@@ -1091,6 +1111,7 @@ static void defscan (signed char *edx)
 			VSTORE(ptr, esi) ;
 		    }
 		esi = oldesi ;
+		curlin = esi - (signed char *) zero ;
 		edx -= 3 ; // point to line-length byte
 		edx += (int) *(unsigned char *)edx ;
 	    }
@@ -1236,6 +1257,7 @@ VAR xeq (void)
 	void *tmpesi ;
 	while (1) // for each statement
 	    {
+		__label__ xeq1 ;
 #ifdef PICO
 		if((&al < (signed char *)libtop + 0x800) && (&al >= (signed char *)userRAM))
 			error(0, "Recursion too deep!");
@@ -1259,6 +1281,34 @@ VAR xeq (void)
 
 		switch (al)
 		    {
+#if defined (REDUCE_STACK_SIZE) && defined(__GNUC__) && !defined(__llvm__)
+		auto void nestedLOCAL(void);
+		auto void nestedPRIVATE(void);
+		auto void nestedINSTALL(void);
+		auto void nestedRESTOR(void);
+		auto void nestedBPUT(void);
+		auto void nestedPTR(void);
+		auto void nestedINPUT(void);
+		auto void nestedPRINT(void);
+		auto void nestedERROR(void);
+		auto void nestedCOLOUR(void);
+		auto void nestedLINE(void);
+		auto void nestedCIRCLE(void);
+		auto void nestedELLIPSE(void);
+		auto void nestedRECT(void);
+		auto void nestedON(void);
+		auto void nestedFOR(void);
+		auto void nestedNEXT(void);
+		auto void nestedEXIT(void);
+		auto void nestedSWAP(void);
+		auto void nestedCASE(void);
+		auto void nestedMOUSE(void);
+		auto void nestedSYS(void);
+		auto void nestedDIM(void);
+		auto void nestedSOUND(void);
+		auto void nestedENVEL(void);
+		auto void nestedSLICE(void);
+#endif
 			case ':':
 				goto xeq1 ;
 
@@ -1385,8 +1435,7 @@ VAR xeq (void)
 				    }
 				esp++ ;
 				{
-				int n = itemi () ;
-				esi = findl (n) ;
+				esi = findl (itemi ()) ;
 				if (esi == NULL)
 					error (41, NULL) ; // 'No such line'
 				esi += 3 ; // n.b. in case very first line!
@@ -1404,6 +1453,11 @@ VAR xeq (void)
 /************************************ LOCAL ************************************/
 
 			case TLOCAL:
+#if defined (REDUCE_STACK_SIZE) && defined(__GNUC__) && !defined(__llvm__)
+		nestedLOCAL();
+		void __attribute__ ((noinline)) nestedLOCAL(void)
+#endif
+			    {
 				if (*esi == TERROR)
 					esi++ ; // Ignore
 				else if (*esi == TDATA)
@@ -1434,28 +1488,35 @@ VAR xeq (void)
 						nxt () ;
 					    }
 				    }
-				break ;
+			    }
+			break ;
 
 /*********************************** PRIVATE ***********************************/
 
 			case TPRIVATE:
-				{
-					unsigned char type ;
-					void *ptr ;
-					int count = 0 ;
-					signed char *oldesi = esi ;
-					char *edi = accs ;
-					isloc () ;
+#if defined (REDUCE_STACK_SIZE) && defined(__GNUC__) && !defined(__llvm__)
+		nestedPRIVATE();
+		void __attribute__ ((noinline)) nestedPRIVATE(void)
+#endif
+			    {
+				unsigned char type ;
+				void *ptr ;
+				volatile int seq ;
+				int count = 0 ;
+				signed char *oldesi = esi ;
+				char *edi = accs ;
+				isloc () ;
 
-					*secret (edi, 4) = 0x0D ;
-					esi = (signed char *) accs ;
-					ptr = getput (&type) ;
-					esi = oldesi ;
-					if (ILOAD(ptr))
-					    {
-						skip () ;
-						break ; // reentrant call, ignore
-					    }
+				*secret (edi, 4) = 0x0D ;
+				esi = (signed char *) accs ;
+				ptr = getput (&type) ;
+				esi = oldesi ;
+				if (ILOAD(ptr))
+				    {
+					skip () ; // reentrant call, ignore
+				    }
+				else
+				    {
 					ISTORE(ptr, 1) ;
 					*--esp = 0 ;
 					*--esp = 0 ;
@@ -1485,8 +1546,10 @@ VAR xeq (void)
 					*--esp = count ;
 					*--esp = RETCHK ;
 					esi = oldesi - 1 ;
+					for (seq=0; seq<1; seq++) ; // GCC bug?
 					// transfer secret [accs] to formal [esi] 
 					esi = argue ((signed char *)accs - 1, esp + 2, 1) ;
+				    }
 				}
 				break ;
 
@@ -1571,16 +1634,19 @@ VAR xeq (void)
 /*********************************** RESTORE ***********************************/
 
 			case TRESTOR:
+#if defined (REDUCE_STACK_SIZE) && defined(__GNUC__) && !defined(__llvm__)
+		nestedRESTOR();
+		void __attribute__ ((noinline)) nestedRESTOR(void)
+#endif
+			    {
 				if (*esi == TDATA)
 				    {
 					esi++ ;
 					if (*(int *)esp++ != LDCHK)
 						error (54, "DATA not LOCAL") ;
 					datptr = *esp++ ;
-					break ;
 				    }
-
-				if (*esi == TERROR)
+				else if (*esi == TERROR)
 				    {
 					esi++ ;
 					if (*(int *)esp++ != ONCHK)
@@ -1588,10 +1654,8 @@ VAR xeq (void)
 					onersp = *(heapptr **)esp ;
 					esp += STRIDE ;
 					errtrp = *esp++ ;
-					break ;
 				    }
-
-				if (*esi == TLOCAL)
+				else if (*esi == TLOCAL)
 				    {
 					esi++ ;
 					while ((*(int *)esp != PROCHK) && (*(int *)esp != FNCHK))
@@ -1622,10 +1686,8 @@ VAR xeq (void)
 						else
 							error (12, NULL) ; // 'Not in a FN or PROC'
 					    }
-					break ;
 				    }
-
-				if (*esi == '+')
+				else if (*esi == '+')
 				    {
 					int n ;
 					signed char *edi ;
@@ -1650,8 +1712,8 @@ VAR xeq (void)
 				else
 					datptr = search (vpage + (signed char *) zero, TDATA) -
 							(signed char *) zero ;
-
-				break ;
+			    }
+			break ;
 
 /************************************ CALL *************************************/
 
@@ -1660,6 +1722,12 @@ VAR xeq (void)
 				VAR v = expr () ;
 				if (v.s.t != -1)
 				    {
+#if defined (REDUCE_STACK_SIZE) && defined(__GNUC__) && !defined(__llvm__)
+		auto void nestedCALL(void);
+		nestedCALL();
+		void __attribute__ ((noinline)) nestedCALL(void)
+#endif
+					{
 					size_t n = v.i.n ;
 					void (*func) (int,int,int,int,int,int,char *) ;
 					char *p = buff + 1 ;
@@ -1695,16 +1763,22 @@ VAR xeq (void)
 						func (stavar[1], stavar[2], stavar[3],
 						      stavar[4], stavar[5], stavar[6], buff) ;
 					    }
-					break ;
+					}
+				    break ;
 				    }
 				else
 					fixs (v) ;
 				}
+
 				// Falls through ...
 
 /*********************************** INSTALL ***********************************/
 
 			case TINSTALL:
+#if defined (REDUCE_STACK_SIZE) && defined(__GNUC__) && !defined(__llvm__)
+		nestedINSTALL();
+		void __attribute__ ((noinline)) nestedINSTALL(void)
+#endif
 				{
 				VAR v ;
 				void *chan ;
@@ -1734,38 +1808,41 @@ VAR xeq (void)
 						break ; // already installed
 					edi += ll ;
 				    }
-				chan = osopen (0, accs) ;
-				if (chan == 0)
-					error (214, "File or path not found") ;
- 				size = getext (chan) ;
-				osshut (chan) ;
-				oshwm (edi + v.s.l + 5 + size, 0) ;
-				ISTORE(edi, v.s.l + 5) ;
-				memcpy (edi + 4, accs, v.s.l + 1) ;
-				osload (accs, edi + v.s.l + 5, size) ;
-				newtop = gettop (edi, NULL) ;
-				if (newtop == NULL) 
-					error (52, NULL) ; // 'Bad library'
+				if (ll == 0)
+				    {
+					chan = osopen (0, accs) ;
+					if (chan == 0)
+						error (214, "File or path not found") ;
+ 					size = getext (chan) ;
+					osshut (chan) ;
+					oshwm (edi + v.s.l + 5 + size, 0) ;
+					ISTORE(edi, v.s.l + 5) ;
+					memcpy (edi + 4, accs, v.s.l + 1) ;
+					osload (accs, edi + v.s.l + 5, size) ;
+					newtop = gettop (edi, NULL) ;
+					if (newtop == NULL) 
+						error (52, NULL) ; // 'Bad library'
 #ifdef PICO
-				libtop = newtop ;
+					libtop = newtop ;
 #endif
-				if (al == TINSTALL)
-				    {
-					defscan (libase + (signed char *) zero) ;
-					defscan (vpage + (signed char *) zero) ;
-				    }
-				else
-				    {
-					ISTORE(newtop, 0xF8000005) ;
-					*(newtop + 4) = 0x0D ;
-					check () ;
-					esp -= STRIDE ;
-					*(void **)esp = esi ;
-					*--esp = GOSCHK ;
-					esp -= STRIDE ;
-					*(void **)esp = edi ;
-					*--esp = CALCHK ;
-					esi = edi + v.s.l + 4 ;
+					if (al == TINSTALL)
+					    {
+						defscan (libase + (signed char *) zero) ;
+						defscan (vpage + (signed char *) zero) ;
+					    }
+					else
+					    {
+						ISTORE(newtop, 0xF8000005) ;
+						SSTORE(newtop + 4, 0x0D) ;
+						check () ;
+						esp -= STRIDE ;
+						*(void **)esp = esi ;
+						*--esp = GOSCHK ;
+						esp -= STRIDE ;
+						*(void **)esp = edi ;
+						*--esp = CALCHK ;
+						esi = edi + v.s.l + 4 ;
+					    }
 				    }
 				}
 				break ;
@@ -1802,6 +1879,10 @@ VAR xeq (void)
 /************************************ BPUT *************************************/
 
 			case TBPUT:
+#if defined (REDUCE_STACK_SIZE) && defined(__GNUC__) && !defined(__llvm__)
+		nestedBPUT();
+		void __attribute__ ((noinline)) nestedBPUT(void)
+#endif
 				{
 				VAR v ;
 				void *chan = channel () ;
@@ -1830,6 +1911,11 @@ VAR xeq (void)
 /************************************  PTR  ************************************/
 
 			case TPTRL:
+#if defined (REDUCE_STACK_SIZE) && defined(__GNUC__) && !defined(__llvm__)
+		nestedPTR();
+		void __attribute__ ((noinline)) nestedPTR(void)
+#endif
+			    {
 				if (*esi == '(')
 				    {
 					void *ptr ;
@@ -1860,12 +1946,19 @@ VAR xeq (void)
 					n = expri () ;
 					setptr (chan, n) ;
 				    }
-				break ;
+			    }
+			break ;
 
 /************************************  EXT  ************************************/
 
 			case TEXTR:
-				error (255, "Sorry, not implemented") ;
+				{
+				long long n ;
+				void *chan = channel () ;
+				equals () ;
+				n = expri () ;
+				setext (chan, n) ;
+				}
 
 /************************************ PAGE *************************************/
 
@@ -1945,9 +2038,15 @@ VAR xeq (void)
 			case TREAD:
 				if (*esi != '#')
 				    {
+#if defined (REDUCE_STACK_SIZE) && defined(__GNUC__) && !defined(__llvm__)
+		auto void nestedREAD(void);
+		nestedREAD();
+		void __attribute__ ((noinline)) nestedREAD(void)
+#endif
+					{
 					unsigned char type ;
 					void *ptr ;
-					if ((int) datptr == NULL - (void *) zero)
+					if (datptr == (unsigned int) (NULL - (void *) zero))
 						error (42, NULL) ; // 'Out of DATA'
 					signed char *edx = datptr + (signed char *) zero ;
 					while (1)
@@ -1999,13 +2098,20 @@ VAR xeq (void)
 						nxt () ;
 						curlin = esi - (signed char *) zero ;
 					    }
+					}
 					break ;
 				    }
+
 				// Falls through to INPUT....
 
 /************************************ INPUT ************************************/
 
 			case TINPUT:
+#if defined (REDUCE_STACK_SIZE) && defined(__GNUC__) && !defined(__llvm__)
+		nestedINPUT();
+		void __attribute__ ((noinline)) nestedINPUT(void)
+#endif
+			    {
 				if (*esi == '#')
 				    {
 					void *chan = channel () ;
@@ -2025,9 +2131,10 @@ VAR xeq (void)
 							VAR v ;
 							char *p = pfree + (char *) zero ;
 							int i, size = 5 ;
-							if (liston & BIT0) size = 8 ;
-							if (liston & BIT1) size = 10 ;
-							for (i = 0; i < size; i++)
+							if ((liston & 3) == 1) size = 8 ;
+							if ((liston & 3) == 2) size = 32 ;
+							if ((liston & 3) == 3) size = 10 ;
+							for (i = 0; i < (size > 10 ? 4 : size); i++)
 								*p++ = osbget (chan, NULL) ;
 							v = loadn (pfree + zero, size) ;
 							storen (v, ptr, type) ;
@@ -2054,78 +2161,79 @@ VAR xeq (void)
 							stores (v, ptr, type) ;
 						    }
 					    }
-					break ;
 				    }
-				{
-				unsigned char flag = 0 ;
-				char *bufptr = buff ;
-				*bufptr = 0x0D ;
-
-				if (*esi == TLINE)
+				else
 				    {
-					esi++ ;
-					flag = BIT7 ;
-					nxt () ;
-				    }
+					unsigned char flag = 0 ;
+					char *bufptr = buff ;
+					*bufptr = 0x0D ;
 
-				while (1)
-				    {
-					VAR v ;
-					signed char al ;
-
-					if (termq ())
-						break ;
-
-					al = *esi++ ;
-					if ((al == ',') || (al == ';'))
-						flag ^= BIT0 ;
-					else if (al == '"')
+					if (*esi == TLINE)
 					    {
-						v = cons () ;
-						ptext (v.s.p + (char *) zero, v.s.l) ;
-						flag |= BIT0 ;
+						esi++ ;
+						flag = BIT7 ;
+						nxt () ;
 					    }
-					else if (format (al))
-						flag |= BIT0 ;
-					else
+
+					while (1)
 					    {
-						void *ptr ;
-						unsigned char type ;
-						esi-- ;
-						ptr = getput (&type) ;
-						if (type & BIT6)
-							error (14, NULL) ; // 'Bad use of array'
-						if (type & BIT4)
-							error (56, NULL) ; // 'Bad use of structure'
-						if (*bufptr == 0x0D)
+						VAR v ;
+						signed char al ;
+
+						if (termq ())
+							break ;
+
+						al = *esi++ ;
+						if ((al == ',') || (al == ';'))
+							flag ^= BIT0 ;
+						else if (al == '"')
 						    {
-							if (!(flag & BIT0))
+							v = cons () ;
+							ptext (v.s.p + (char *) zero, v.s.l) ;
+							flag |= BIT0 ;
+						    }
+						else if (format (al))
+							flag |= BIT0 ;
+						else
+						    {
+							void *ptr ;
+							unsigned char type ;
+							esi-- ;
+							ptr = getput (&type) ;
+								if (type & BIT6)
+								error (14, NULL) ; // 'Bad use of array'
+							if (type & BIT4)
+								error (56, NULL) ; // 'Bad use of structure'
+							if (*bufptr == 0x0D)
 							    {
-								outchr ('?') ;
-								outchr (' ') ;
+								if (!(flag & BIT0))
+								    {
+									outchr ('?') ;
+									outchr (' ') ;
+								    }
+								osline (buff) ;
+								crlf () ;
+								bufptr = buff ;
 							    }
-							osline (buff) ;
-							crlf () ;
-							bufptr = buff ;
+							if (flag & BIT7)
+							    {
+								v.s.l = (char *) memchr (bufptr, 0x0D, 256) - bufptr ;
+								memcpy (accs, bufptr, v.s.l + 1) ;
+								bufptr += v.s.l ;
+							    }
+							else
+							    {
+								v.s.l = fetchs (&bufptr) ;
+								if ((*bufptr == ',') || (*bufptr == ';'))
+									bufptr++ ;
+							    }
+							v.s.p = accs - (char *) zero ;
+							if (type >= 128)
+								stores (v, ptr, type) ;
+							else
+								storen (val (), ptr, type) ;
+							flag ^= BIT0 ;
 						    }
-						if (flag & BIT7)
-						    {
-							v.s.l = (char *) memchr (bufptr, 0x0D, 256) - bufptr ;
-							memcpy (accs, bufptr, v.s.l + 1) ;
-							bufptr += v.s.l ;
-						    }
-						else
-						    {
-							v.s.l = fetchs (&bufptr) ;
-							if ((*bufptr == ',') || (*bufptr == ';'))
-								bufptr++ ;
-						    }
-						v.s.p = accs - (char *) zero ;
-						if (type >= 128)
-							stores (v, ptr, type) ;
-						else
-							storen (val (), ptr, type) ;
-						flag ^= BIT0 ;
 					    }
 				    }
 				}
@@ -2134,6 +2242,11 @@ VAR xeq (void)
 /************************************ PRINT ************************************/
 
 			case TPRINT:
+#if defined (REDUCE_STACK_SIZE) && defined(__GNUC__) && !defined(__llvm__)
+		nestedPRINT();
+		void __attribute__ ((noinline)) nestedPRINT(void)
+#endif
+			    {
 				if (*esi == '#')
 				    {
 					void *chan = channel () ;
@@ -2146,10 +2259,11 @@ VAR xeq (void)
 						    {
 							char *p = pfree + (char *) zero ;
 							int i, size = 5 ;
-							if (liston & BIT0) size = 8 ;
-							if (liston & BIT1) size = 10 ;
+							if ((liston & 3) == 1) size = 8 ;
+							if ((liston & 3) == 2) size = 32 ;
+							if ((liston & 3) == 3) size = 10 ;
 							storen (v, p, size) ;
-							for (i = 0; i < size; i++)
+							for (i = 0; i < (size > 10 ? 4 : size); i++)
 								osbput (chan, *p++) ;
 						    }
 						else
@@ -2161,54 +2275,55 @@ VAR xeq (void)
 							osbput (chan, 0x0D) ;
 						    }
 					    }
-					break ;
 				    }
-				{
-				signed char al ;
-				VAR v ;
-				unsigned char mode = 0 ;
-				int field = stavar[0] & 0xFF ;
-
-				while (1)
+				else
 				    {
-					al = nxt () ;
-					if ((al == ':') || (al == 0x0D) || (al == TELSE))
+					signed char al ;
+					VAR v ;
+					unsigned char mode = 0 ;
+					int field = stavar[0] & 0xFF ;
+
+					while (1)
 					    {
-						if ((mode & BIT0) == 0) crlf () ;
-						break ;
-					    }
-					mode &= ~BIT0 ;
-					esi++ ;
-					if (al == '~')
-						mode = 2 ;
-					else if (al == ';')
-					    {
-						mode = 1 ;
-						field = 0 ;
-					    }
-					else if (al == ',')
-					    {
-						mode &= ~2 ;
-						field = stavar[0] & 0xFF ;
-						if (field)
-						while (vcount % field)
-							outchr (' ') ;
-					    }
-					else if (!format(al))
-					    {
-						esi-- ;
-						v = expr () ;
-						if (v.s.t == -1)
+						al = nxt () ;
+						if ((al == ':') || (al == 0x0D) || (al == TELSE))
 						    {
-							ptext (v.s.p + (char *) zero, v.s.l) ;
+							if ((mode & BIT0) == 0) crlf () ;
+							break ;
 						    }
-						else
+						mode &= ~BIT0 ;
+						esi++ ;
+						if (al == '~')
+							mode = 2 ;
+						else if (al == ';')
 						    {
-							if (mode & BIT1)
-							    strhex (v, accs, field) ;
+							mode = 1 ;
+							field = 0 ;
+						    }
+						else if (al == ',')
+						    {
+							mode &= ~2 ;
+							field = stavar[0] & 0xFF ;
+							if (field)
+							while (vcount % field)
+								outchr (' ') ;
+						    }
+						else if (!format(al))
+						    {
+							esi-- ;
+							v = expr () ;
+							if (v.s.t == -1)
+							    {
+								ptext (v.s.p + (char *) zero, v.s.l) ;
+							    }
 							else
-							    str (v, accs, (stavar[0] & 0xFFFF00) + field) ;
-							text (accs) ;
+							    {
+								if (mode & BIT1)
+								    strhex (v, accs, field) ;
+								else
+								    str (v, accs, (stavar[0] & 0xFFFF00) + field) ;
+								text (accs) ;
+							    }
 						    }
 					    }
 				    }
@@ -2239,6 +2354,10 @@ VAR xeq (void)
 /*********************************** ERROR *************************************/
 
 			case TERROR:
+#if defined (REDUCE_STACK_SIZE) && defined(__GNUC__) && !defined(__llvm__)
+		nestedERROR();
+		void __attribute__ ((noinline)) nestedERROR(void)
+#endif
 				{
 				VAR v ;
 				int n = expri () ;
@@ -2308,26 +2427,37 @@ VAR xeq (void)
 /*********************************** COLOUR ************************************/
 
 			case TCOLOUR:
+#if defined (REDUCE_STACK_SIZE) && defined(__GNUC__) && !defined(__llvm__)
+		nestedCOLOUR();
+		void __attribute__ ((noinline)) nestedCOLOUR(void)
+#endif
 				{
-				int r, g, b, n = expri () ;
+				int r = 0, g = 0, b = 0, t, n = expri () ;
 				if (*esi != ',')
 				    {
 					oswrch (17) ;
 					oswrch (n) ;
-					break ;
 				    }
-				esi ++ ;
-				r = expri () ;
-				comma () ;
-				g = expri () ;
-				comma ();
-				b = expri () ;
-				oswrch (19) ;
-				oswrch (n) ;
-				oswrch (16) ;
-				oswrch (r) ;
-				oswrch (g) ;
-				oswrch (b) ;
+				else
+				    {
+					esi ++ ;
+					t = expri () ;
+					if (*esi == ',')
+					    {
+						r = t ;
+						t = 16 ;
+						esi ++ ;
+						g = expri () ;
+						comma ();
+						b = expri () ;
+					    }
+					oswrch (19) ;
+					oswrch (n) ;
+					oswrch (t) ;
+					oswrch (r) ;
+					oswrch (g) ;
+					oswrch (b) ;
+				    }
 				}
 				break ;
 
@@ -2408,6 +2538,10 @@ VAR xeq (void)
 /***********************************  LINE  ************************************/
 
 			case TLINE:
+#if defined (REDUCE_STACK_SIZE) && defined(__GNUC__) && !defined(__llvm__)
+		nestedLINE();
+		void __attribute__ ((noinline)) nestedLINE(void)
+#endif
 				{
 				int x1, y1, x2, y2 ;
 				x1 = expri () ;
@@ -2472,6 +2606,10 @@ VAR xeq (void)
 /************************************ CIRCLE ***********************************/
 
 			case TCIRCLE:
+#if defined (REDUCE_STACK_SIZE) && defined(__GNUC__) && !defined(__llvm__)
+		nestedCIRCLE();
+		void __attribute__ ((noinline)) nestedCIRCLE(void)
+#endif
 				{
 				int n = 145, x, y, r ;
 				if (*esi == TFILL)
@@ -2492,6 +2630,10 @@ VAR xeq (void)
 /*********************************** ELLIPSE ***********************************/
 
 			case TELLIPSE:
+#if defined (REDUCE_STACK_SIZE) && defined(__GNUC__) && !defined(__llvm__)
+		nestedELLIPSE();
+		void __attribute__ ((noinline)) nestedELLIPSE(void)
+#endif
 				{
 				int n = 193, x, y, a, b ;
 				if (*esi == TFILL)
@@ -2515,6 +2657,10 @@ VAR xeq (void)
 /********************************** RECTANGLE **********************************/
 
 			case TRECT:
+#if defined (REDUCE_STACK_SIZE) && defined(__GNUC__) && !defined(__llvm__)
+		nestedRECT();
+		void __attribute__ ((noinline)) nestedRECT(void)
+#endif
 				{
 				int n = 191, x, y, w, h ;
 				if (*esi == TFILL)
@@ -2614,6 +2760,10 @@ VAR xeq (void)
 /*************************************  ON  ************************************/
 
 			case TON:
+#if defined (REDUCE_STACK_SIZE) && defined(__GNUC__) && !defined(__llvm__)
+		nestedON();
+		void __attribute__ ((noinline)) nestedON(void)
+#endif
 				{
 				int n, nest ;
 				void *edx ;
@@ -2749,12 +2899,16 @@ VAR xeq (void)
 							error (41, NULL) ; // 'No such line'
 						newlin () ;
 				    }
+			    }
 				break ;
-				}
 
 /************************************  FOR  ************************************/
 
 			case TFOR:
+#if defined (REDUCE_STACK_SIZE) && defined(__GNUC__) && !defined(__llvm__)
+		nestedFOR();
+		void __attribute__ ((noinline)) nestedFOR(void)
+#endif
 				{
 				void *ptr ;
 				unsigned char type ;
@@ -2809,6 +2963,11 @@ VAR xeq (void)
 /************************************* NEXT *************************************/
 
 			case TNEXT:
+#if defined (REDUCE_STACK_SIZE) && defined(__GNUC__) && !defined(__llvm__)
+		nestedNEXT();
+		void __attribute__ ((noinline)) nestedNEXT(void)
+#endif
+			    {
 				while (1)
 				    {
 					void *ptr = NULL ;
@@ -2869,7 +3028,7 @@ VAR xeq (void)
 					v = loadn (ptr, type) ;
 					s.i.t = *(short *)(esp + 4 + STRIDE) ;
 					s.i.n = *(long long *)(esp + 2 + STRIDE) ;
-#if defined __GNUC__ && __GNUC__ < 5
+#if !(defined(__GNUC__) && (__GNUC__ >= 7) || defined(__clang__) && (__clang_major__ >= 4))
 					if ((v.i.t == 0) && (s.i.t == 0) && ((((tmpll = v.i.n + s.i.n) ^
 						             v.i.n) >= 0) || ((int)(v.s.l ^ s.s.l) < 0)))
 #else
@@ -2935,6 +3094,7 @@ VAR xeq (void)
 						break ;
 					    }
 				    }
+				}
 				break ;
 
 /*********************************** REPEAT ************************************/
@@ -2983,13 +3143,10 @@ VAR xeq (void)
 				*(void **)esp = esi ;
 				*--esp = WHICHK ;
 
-				{
-				long long n = expri () ;
-				if (n) 
+				if (expri()) 
 					break ;
 				esp += 1 + STRIDE ;
 				wsurch (TENDWHILE, TWHILE, 1) ;
-				}
 				break ;
 
 /********************************* ENDWHILE ************************************/
@@ -3012,11 +3169,10 @@ VAR xeq (void)
 					else
 						error (46, NULL) ; // 'Not in a WHILE loop'
 				    }
+				{
 				signed char *esiold = esi ;
 				esi = *(void **)(esp+1) ;
-				{
-				long long n = expri () ;
-				if (n)
+				if (expri())
 					break ;
 				esp += 1 + STRIDE ;
 				esi = esiold ;
@@ -3026,6 +3182,10 @@ VAR xeq (void)
 /************************************ EXIT *************************************/
 
 			case TEXIT:
+#if defined (REDUCE_STACK_SIZE) && defined(__GNUC__) && !defined(__llvm__)
+		nestedEXIT();
+		void __attribute__ ((noinline)) nestedEXIT(void)
+#endif
 				{
 				int level = 1 ;
 				unsigned char type ;
@@ -3108,6 +3268,10 @@ VAR xeq (void)
 /************************************ SWAP *************************************/
 
 			case TSWAP:
+#if defined (REDUCE_STACK_SIZE) && defined(__GNUC__) && !defined(__llvm__)
+		nestedSWAP();
+		void __attribute__ ((noinline)) nestedSWAP(void)
+#endif
 				{
 				void *ptr1, *ptr2 ;
 				unsigned char type1, type2 ;
@@ -3123,7 +3287,7 @@ VAR xeq (void)
 				if (type1 != type2)
 					error (6, NULL) ; // 'Type mismatch'
 				if ((type1 == 36) || (type1 & BIT6))
-					n = sizeof(size_t) ; // whole array
+					n = sizeof(size_t) ; // whole array or FN/PROC
 				else if (type1 == 128)
 				    {
 					unsigned int t ;
@@ -3154,6 +3318,10 @@ VAR xeq (void)
 /************************************ CASE *************************************/
 
 			case TCASE:
+#if defined (REDUCE_STACK_SIZE) && defined(__GNUC__) && !defined(__llvm__)
+		nestedCASE();
+		void __attribute__ ((noinline)) nestedCASE(void)
+#endif
 				{
 				int level = 0 ;
 				signed char *oldesi ;
@@ -3219,18 +3387,24 @@ VAR xeq (void)
 					else
 						level = 0 ;
 				    }
-				}
-				break ;
+			    }
+			break ;
 
 /******************************* TIME and TIME$ ********************************/
 
 			case TTIMEL:
-				{
-				long long n ;
+#ifdef CAN_SET_RTC
+				if ( *esi == '$' )
+				    {
+					esi++;
+					equals ();
+					fixs (exprs ());
+					putims (accs);
+					break;
+				    }
+#endif
 				equals () ;
-				n = expri () ;
-				putime (n) ;
-				}
+				putime (expri()) ;
 				break ;
 
 /************************************ WAIT *************************************/
@@ -3256,6 +3430,10 @@ VAR xeq (void)
 /*********************************** MOUSE *************************************/
 
 			case TMOUSE:
+#if defined (REDUCE_STACK_SIZE) && defined(__GNUC__) && !defined(__llvm__)
+		nestedMOUSE();
+		void __attribute__ ((noinline)) nestedMOUSE(void)
+#endif
 				{
 				int b, x, y ;
 				VAR v ;
@@ -3309,12 +3487,16 @@ VAR xeq (void)
 					v.i.n = b ;
 					storen (v, ptr, type) ;
 				    }
-				break ;
 				}
+				break ;
 
 /***********************************  SYS  *************************************/
 
 			case TSYS:
+#if defined (REDUCE_STACK_SIZE) && defined(__GNUC__) && !defined(__llvm__)
+		nestedSYS();
+		void __attribute__ ((noinline)) nestedSYS(void)
+#endif
 				{
 				int ni = 0, nf = 0 ;
 				heapptr *oldesp = esp ;
@@ -3445,27 +3627,37 @@ VAR xeq (void)
 /*********************************** SOUND *************************************/
 
 			case TSOUND:
+#if defined (REDUCE_STACK_SIZE) && defined(__GNUC__) && !defined(__llvm__)
+		nestedSOUND();
+		void __attribute__ ((noinline)) nestedSOUND(void)
+#endif
 				{
 				if (*esi == TOFF)
 				    {
 					esi++ ;
 					quiet () ;
-					break ;
 				    }
-				short chan = expri () ;
-				comma () ;
-				signed char ampl = expri () ;
-				comma () ;
-				unsigned char pitch = expri () ;
-				comma () ;
-				unsigned char duration = expri () ;
-				sound (chan, ampl, pitch, duration) ;
+				else
+				    {
+					short chan = expri () ;
+					comma () ;
+					signed char ampl = expri () ;
+					comma () ;
+					unsigned char pitch = expri () ;
+					comma () ;
+					unsigned char duration = expri () ;
+					sound (chan, ampl, pitch, duration) ;
+				    }
 				}
 				break ;
 
 /********************************** ENVELOPE ***********************************/
 
 			case TENVEL:
+#if defined (REDUCE_STACK_SIZE) && defined(__GNUC__) && !defined(__llvm__)
+		nestedENVEL();
+		void __attribute__ ((noinline)) nestedENVEL(void)
+#endif
 				{
 				int n;
 				signed char envelope[14] ;
@@ -3482,11 +3674,16 @@ VAR xeq (void)
 /************************************* DIM *************************************/
 
 			case TDIM:
+#if defined (REDUCE_STACK_SIZE) && defined(__GNUC__) && !defined(__llvm__)
+		nestedDIM();
+		void __attribute__ ((noinline)) nestedDIM(void)
+#endif
+			    {
 				while (1)
 				    {
 					void *ebp ;
-					int ebx = 0 ; // data size
-					int ecx = 0 ; // dims count
+					unsigned int ebx = 0 ; // data size
+					unsigned int ecx = 0 ; // dims count
 					char *edx ; // heap pointer
 					unsigned char type = 0 ;
 					signed char *oldesi ;
@@ -3533,18 +3730,23 @@ VAR xeq (void)
 						char *edi = pfree + (char *) zero ;
 						if ((edx > edi) && (edx < (char *)esp))
 							edi = edx ;
+						else if ((edx == edi) && (ILOAD(ebp) != 1))
+							edi = (char *) ((intptr_t) edi | 3) ; // Align
 
 						type |= BIT6 ; // Flag array
 						ebx += (type & TMASK) ;
 						*edi++ = (unsigned char) ecx ;
 						for (i = ecx-1; i >= 0; i--)
 						    {
-							int eax = *(int *)(esp + i) ;
+							unsigned int eax = *(int *)(esp + i) ;
 							ISTORE(edi, eax) ;
 							edi += 4 ;
+#if !(defined(__GNUC__) && (__GNUC__ >= 7) || defined(__clang__) && (__clang_major__ >= 4))
 							ebx *= eax ;
-							if (ebx < 0)
+#else
+							if (__builtin_umul_overflow (eax, ebx, &ebx))
 								error (11, NULL) ; // 'DIM space'
+#endif
 						    }
 						esp += ecx ;
 						ecx = ecx * 4 + 1 ; // size of array descriptor
@@ -3631,6 +3833,8 @@ VAR xeq (void)
 							edi = edx ;  // tag structure
 							edx = pfree + (char *) zero ;
 						    }
+						else if (edx == edi)
+							edx = (char *) ((intptr_t) edx | 3) ; // Align
 
 						if (ecx == 0)
 							CSTORE(ebp, edi) ; // no array
@@ -3646,7 +3850,11 @@ VAR xeq (void)
 							    }
 
 						if ((edx + ebx + STACK_NEEDED) > (char *) esp)
+						    {
+							CSTORE(ebp, 0) ; 
 							error (11, NULL) ; // 'DIM space'
+						    }
+
 						pfree = edx + ebx - (char *) zero ;
 
 						if (type == (STYPE + 0x40)) // structure array ?
@@ -3755,6 +3963,7 @@ VAR xeq (void)
 								eax = VLOAD(edi + ecx) ;
 							if (eax != edx)
 								error (10, NULL) ; // 'Bad DIM'
+							edx = pfree + zero ;
 						    }
 						else if (edx > (pfree + (char *) zero))
 						    {
@@ -3762,8 +3971,12 @@ VAR xeq (void)
 								edi -= edx - pfree - (char *) zero ;
 							ecx += edx - pfree - (char *) zero ;
 							fixup (pfree + zero, edi - pfree - (char *) zero) ;
+							edx = pfree + zero ;
 						    }
-						if ((ecx != 0) && memcmp (pfree + zero, edi, ecx))
+						else
+							edx = (char *) ((intptr_t) edx | 3) ; // Align3
+
+						if ((ecx != 0) && memcmp (edx, edi, ecx))
 							error (10, NULL) ; // 'Bad DIM statement'
 					    }
 
@@ -3771,6 +3984,7 @@ VAR xeq (void)
 						break ;
 					esi++ ;
 				    }
+				}
 				break ;
 
 /*********************************** Label *************************************/
@@ -3829,6 +4043,10 @@ VAR xeq (void)
 			case TLEFT:
 			case TRIGHT:
 			case TMID:
+#if defined (REDUCE_STACK_SIZE) && defined(__GNUC__) && !defined(__llvm__)
+		nestedSLICE();
+		void __attribute__ ((noinline)) nestedSLICE(void)
+#endif
 				{
 				VAR v,r ;
 				int n = 1, s = 0 ;
@@ -3875,16 +4093,17 @@ VAR xeq (void)
 					n = v.s.l - 1 ;
 				if (n > (int) r.s.l) // careful with signedness!
 					n = r.s.l ;
-				if ((s < 0) || (s >= v.s.l) || (n == 0))
-					break ;
-				if (al == TRIGHT)
-					s = (unsigned int)v.s.l - n ;
-				if (s < 0)
-					s = 0 ;
-				if (n > ((unsigned int)v.s.l - s))
-					n = (unsigned int)v.s.l - s ;
+				if ((s >= 0) && (s < v.s.l) && (n != 0))
+				    {
+					if (al == TRIGHT)
+						s = (unsigned int)v.s.l - n ;
+					if (s < 0)
+						s = 0 ;
+					if (n > ((unsigned int)v.s.l - s))
+						n = (unsigned int)v.s.l - s ;
 
-				memcpy (v.s.p + s + zero, r.s.p + zero, n) ;
+					memcpy (v.s.p + s + zero, r.s.p + zero, n) ;
+				    }
 				}
 				break ;
 
@@ -3893,8 +4112,8 @@ VAR xeq (void)
 			default:
 				esi = tmpesi ;
 			case TLET:
-				{
-				void *ptr, *ebp ;
+			    {
+				void *ptr ;
 				unsigned char type ;
 
 				ptr = getput (&type) ;
@@ -3907,6 +4126,12 @@ VAR xeq (void)
 					break ;
 				    }
 
+#if defined (REDUCE_STACK_SIZE) && defined(__GNUC__) && !defined(__llvm__)
+		auto void nestedLET(void);
+		nestedLET();
+		void __attribute__ ((noinline)) nestedLET(void)
+#endif
+				{
 				if ((type & BIT6) == 0) // structure
 				    {
 					int len, srclen ;
@@ -3931,56 +4156,60 @@ VAR xeq (void)
 						error (6, NULL) ;  // 'Type mismatch'
 					memcpy (VLOAD(ptr + sizeof(void *)),
 						VLOAD(srcptr + sizeof(void *)), len) ;
-					break ;
 				    }
 
-				ptr = VLOAD(ptr) ;
-				if (ptr < (void *)2)
-					error (14, NULL) ; // 'Bad use of array'
-
-				signed char op = nxt () ;
-				unsigned int ecx = arrlen (&ptr) ; // number of array elements
-				unsigned int eax = ecx * (type & TMASK) ; // array size in bytes
-				if (eax > ((char *)esp - (char *)zero - pfree - STACK_NEEDED))
-					error (0, NULL) ; // 'No room'
-				esp -= (eax + 3) >> 2 ;
-				ebp = esp ;
-				memset ((char *)ebp, 0, eax) ; // Zero 'array descriptors'
-
-				esi++ ;
-				if (op != '=')
+				else 
 				    {
-					if ((op == '+') || (op == '-') || (op == '*') || (op == '/') ||
-							((op >= TAND) & (op <= TOR)))
-						equals () ;
+					void *ebp ;
+					ptr = VLOAD(ptr) ;
+					if (ptr < (void *)2)
+						error (14, NULL) ; // 'Bad use of array'
+
+					signed char op = nxt () ;
+					unsigned int ecx = arrlen (&ptr) ; // number of array elements
+					unsigned int eax = ecx * (type & TMASK) ; // array size in bytes
+					if (eax > ((char *)esp - (char *)zero - pfree - STACK_NEEDED))
+						error (0, NULL) ; // 'No room'
+					esp -= (eax + 3) >> 2 ;
+					ebp = esp ;
+					memset ((char *)ebp, 0, eax) ; // Zero 'array descriptors'
+
+					esi++ ;
+					if (op != '=')
+					    {
+						if ((op == '+') || (op == '-') || (op == '*') || (op == '/') ||
+						    (op == '^') || ((op >= TAND) && (op <= TOR)))
+							equals () ;
+						else
+							error (4, NULL) ; // Mistake
+					    }
+
+					ecx = expra (ebp, ecx, type) ; // Evaluate array expression
+
+					type &= ~BIT6 ;
+					if (type < 128)
+					    {
+						while (ecx--)
+						    {
+							modify (loadn((void *)ebp, type), ptr, type, op) ;
+							ebp += type & TMASK ; // GCC extension
+							ptr += type & TMASK ; // GCC extension
+						    }
+					    }
 					else
-						error (4, NULL) ; // Mistake
-				    }
-
-				ecx = expra (ebp, ecx, type) ; // Evaluate array expression
-
-				type &= ~BIT6 ;
-				if (type < 128)
-				    {
-					while (ecx--)
 					    {
-						modify (loadn((void *)ebp, type), ptr, type, op) ;
-						ebp += type & TMASK ; // GCC extension
-						ptr += type & TMASK ; // GCC extension
+						VAR v = {0} ;
+						while (ecx--)
+						    {
+							modifs (NLOAD(ebp), ptr, type, op) ;
+							stores (v, ebp, type) ;
+							ebp += 8 ; // GCC extension (void has size 1)
+							ptr += 8 ; // GCC extension (void has size 1)
+						    }
 					    }
+					esp += (eax + 3) >> 2 ;
 				    }
-				else
-				    {
-					VAR v = {0} ;
-					while (ecx--)
-					    {
-						modifs (NLOAD(ebp), ptr, type, op) ;
-						stores (v, ebp, type) ;
-						ebp += 8 ; // GCC extension (void has size 1)
-						ptr += 8 ; // GCC extension (void has size 1)
-					    }
-				    }
-				esp += (eax + 3) >> 2 ;
+				}
 			    }
 		    }
 	    }

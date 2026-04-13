@@ -1,10 +1,10 @@
-/******************************************************************\
-*       BBC BASIC Minimal Console Version                          *
-*       Copyright (C) R. T. Russell, 2021-2023                     *
-*                                                                  *
-*       bbccon.c Main program, Initialisation, Keyboard handling   *
-*       Version 0.43a, 23-Mar-2023                                 *
-\******************************************************************/
+/*****************************************************************\
+*       BBC BASIC Minimal Console Version                         *
+*       Copyright (C) R. T. Russell, 2021-2025                    *
+*                                                                 *
+*       bbccon.c Main program, Initialisation, Keyboard handling  *
+*       Version 0.48a, 13-Feb-2025                                *
+\*****************************************************************/
 
 #define _GNU_SOURCE
 #define __USE_GNU
@@ -19,7 +19,7 @@
 #define HISTORY 100  // Number of items in command history
 #define ESCTIME 200  // Milliseconds to wait for escape sequence
 #define QRYTIME 1000 // Milliseconds to wait for cursor query response
-#define QSIZE 16     // Twice longest expected escape sequence
+#define QSIZE 32     // Twice longest expected escape sequence
 
 #ifdef _WIN32
 #include <windows.h>
@@ -84,9 +84,10 @@ char *szLibrary ;
 char *szUserDir ;
 char *szTempDir ;
 char *szCmdLine ;
-int MaximumRAM = MAXIMUM_RAM ;
+intptr_t MaximumRAM = MAXIMUM_RAM ;
 timer_t UserTimerID ;
 unsigned int palette[256] ;
+void *TTFcache[1] ;
 
 // Array of VDU command lengths:
 static int vdulen[] = {
@@ -124,6 +125,7 @@ void quiet (void) ;
 // Dummy functions:
 void gfxPrimitivesSetFont(void) { } ;
 void gfxPrimitivesGetFont(void) { } ;
+void RedefineChar(void) { } ;
 
 // File scope variables:
 static unsigned char inputq[QSIZE] ;
@@ -210,7 +212,7 @@ void *myThread (void *parm)
 #endif
 
 #ifdef __linux__
-static void *mymap (unsigned int size)
+static void *mymap (uintptr_t size)
 {
 	FILE *fp ;
 	char line[256] ;
@@ -226,11 +228,7 @@ static void *mymap (unsigned int size)
 		start = (void *)((size_t)start & -0x1000) ; // page align (GCC extension)
 		if (start >= (base + size)) 
 			return base ;
-		if (finish > (void *)0xFFFFF000)
-			return NULL ;
 		base = (void *)(((size_t)finish + 0xFFF) & -0x1000) ; // page align
-		if (base > ((void *)0xFFFFFFFF - size))
-			return NULL ;
 	    }
 	return base ;
 }
@@ -451,6 +449,12 @@ int vtint (int x, int y)
 	return -1 ;
 }
 
+// Get current MODE number:
+int getmodeno (void)
+{
+	return modeno ;
+}
+
 // Get nearest palette index:
 int vpoint (int x, int y)
 {
@@ -523,13 +527,18 @@ long long apicall_ (long long (*APIfunc) (size_t, size_t, size_t, size_t, size_t
 			volatile double e, volatile double f, volatile double g, volatile double h)
 	{
 		long long result ;
-#ifdef _WIN32
+#ifdef __WIN64__
+		static void* savesp ;
+		asm ("mov %%rsp,%0" : "=m" (savesp)) ;
+#elif defined _WIN32
 		static void* savesp ;
 		asm ("mov %%esp,%0" : "=m" (savesp)) ;
 #endif
 		result = APIfunc (p->i[0], p->i[1], p->i[2], p->i[3], p->i[4], p->i[5],
 				p->i[6], p->i[7], p->i[8], p->i[9], p->i[10], p->i[11]) ;
-#ifdef _WIN32
+#ifdef __WIN64__
+		asm ("mov %0,%%rsp" : : "m" (savesp)) ;
+#elif defined _WIN32
 		asm ("mov %0,%%esp" : : "m" (savesp)) ;
 #endif
 		return result ;
@@ -548,13 +557,18 @@ double fltcall_ (double (*APIfunc) (size_t, size_t, size_t, size_t, size_t, size
 			volatile double e, volatile double f, volatile double g, volatile double h)
 	{
 		double result ;
-#ifdef _WIN32
+#ifdef __WIN64__
+		static void* savesp ;
+		asm ("mov %%rsp,%0" : "=m" (savesp)) ;
+#elif defined _WIN32
 		static void* savesp ;
 		asm ("mov %%esp,%0" : "=m" (savesp)) ;
 #endif
 		result = APIfunc (p->i[0], p->i[1], p->i[2], p->i[3], p->i[4], p->i[5],
 				p->i[6], p->i[7], p->i[8], p->i[9], p->i[10], p->i[11]) ;
-#ifdef _WIN32
+#ifdef __WIN64__
+		asm ("mov %0,%%rsp" : : "m" (savesp)) ;
+#elif defined _WIN32
 		asm ("mov %0,%%esp" : : "m" (savesp)) ;
 #endif
 		return result ;
@@ -1152,7 +1166,7 @@ static FILE *lookup (void *chan)
 }
 
 // Load a file into memory:
-void osload (char *p, void *addr, int max)
+void osload (char *p, void *addr, unsigned int max)
 {
 	int n ;
 	FILE *file ;
@@ -1168,7 +1182,7 @@ void osload (char *p, void *addr, int max)
 }
 
 // Save a file from memory:
-void ossave (char *p, void *addr, int len)
+void ossave (char *p, void *addr, unsigned int len)
 {
 	int n ;
 	FILE *file ;
@@ -1443,6 +1457,12 @@ long long getext (void *chan)
 	return size ;
 }
 
+// Set file size (if possible):
+void setext (void *chan, long long ptr)
+{
+	error (255, "Sorry, not implemented") ;
+}
+
 // Get EOF status:
 long long geteof (void *chan)
 {
@@ -1713,7 +1733,7 @@ pthread_t hThread = 0 ;
 
 	if (base != NULL)
 		userRAM = mmap (base, MaximumRAM, PROT_EXEC | PROT_READ | PROT_WRITE, 
-					MAP_FIXED | MAP_PRIVATE | MAP_ANON, -1, 0) ;
+			    MAP_FIXED | MAP_PRIVATE | MAP_ANON | MAP_NORESERVE, -1, 0) ;
 
 #endif
 
@@ -1834,8 +1854,19 @@ pthread_t hThread = NULL ;
 
 	if (*szAutoRun && (NULL != (ProgFile = fopen (szAutoRun, "rb"))))
 	    {
+		unsigned char *esi = progRAM ;
 		fread (progRAM, 1, userTOP - progRAM, ProgFile) ;
 		fclose (ProgFile) ;
+		while (*esi)
+		    {
+			esi += (int) *esi ; 
+			if (*(esi-1) != 0x0D) 
+			    {
+				fprintf(stderr, "%s isn't a valid internal-format (.bbc) file\r\n",
+						szAutoRun) ;
+				return 10 ;
+			    }
+		    }
 	    }
 	else
 	    {

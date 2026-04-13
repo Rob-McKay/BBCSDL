@@ -26,7 +26,7 @@ bbexec.o: bbexec.c BBC.h
 	$(CXX) -c -O2 -freg-struct-return -ffast-math -fno-finite-math-only $< -o $@
 
 bbeval.o: bbeval.c BBC.h
-	$(CXX) -Wno-array-bounds -c -O2 -freg-struct-return -ffast-math -fno-finite-math-only $< -o $@
+	$(CXX) -Wno-array-bounds -c -O2 -freg-struct-return -ffast-math -fmath-errno -fno-finite-math-only $< -o $@
 
 bbasmb.o: bbasmb_x86_64.c BBC.h
 	$(CXX) -c -Os $< -o $@
@@ -68,6 +68,6 @@ libstb.so: SDL2_rotozoom.o
 
 bbcsdl: $(OBJ) libstb.so
 	$(CXX) $(OBJ) -lz -lstb -L . \
-	-o bbcsdl $(SDL_LIB) -Wl,-s -Wl,-R,'$$ORIGIN'
+	-o bbcsdl $(SDL_LIB) -Wl,-s -Wl,-R,'$$ORIGIN' -rdynamic
 	cp bbcsdl ../../
 	cp libstb.so ../../

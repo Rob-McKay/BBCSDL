@@ -1,13 +1,13 @@
 /*****************************************************************\
 *       32-bit or 64-bit BBC BASIC for SDL 2.0                    *
-*       (C) 2017-2023  R.T.Russell  http://www.rtrussell.co.uk/   *
+*       (C) 2017-2026  R.T.Russell  http://www.rtrussell.co.uk/   *
 *                                                                 *
 *       The name 'BBC BASIC' is the property of the British       *
 *       Broadcasting Corporation and used with their permission   *
 *                                                                 *
 *       bbcmos.c  Machine Operating System emulation              *
 *       This module runs in the context of the interpreter thread *
-*       Version 1.34d, 23-Mar-2023                                *
+*       Version 1.44a, 18-Mar-2026                                *
 \*****************************************************************/
 
 #define _GNU_SOURCE
@@ -42,6 +42,13 @@ void *dlsym (void *, const char *) ;
 #else
 #include <emmintrin.h>
 #endif
+
+#if defined __i386__ || defined __x86_64__ || defined __arm__
+#ifndef __ANDROID__
+void sortup(void){} ;
+void sortdn(void){} ;
+#endif
+#endif 
 
 // Delared in bbmain.c:
 void error (int, const char *) ;
@@ -889,6 +896,11 @@ void reset (void)
 {
 	vduq[10] = 0 ;	// Flush VDU queue
 	keyptr = NULL ;	// Cancel *KEY expansion
+	if (*(keystr + 0))
+	    {
+		SDL_free (*(keystr + 0)) ; // Clipboard
+		*(keystr + 0) = NULL ;
+	    }
 	optval = 0 ;	// Cancel I/O redirection
 	reflag = 0 ;	// *REFRESH ON
  }
@@ -1023,6 +1035,12 @@ int vtint (int x, int y)
 	return waitev () ;
 }
 
+// Get current MODE number:
+int getmodeno (void)
+{
+	return modeno ;
+}
+
 // Get nearest palette index:
 int vpoint (int x, int y)
 {
@@ -1095,7 +1113,14 @@ static int rdkey (unsigned char *pkey)
 	{
 		*pkey = *keyptr++ ;
 		if (*keyptr == 0)
+		    {
 			keyptr = NULL ;
+			if (*(keystr + 0))
+			    {
+				SDL_free (*(keystr + 0)) ; // Clipboard
+				*(keystr + 0) = NULL ;
+			    }
+		    }
 		return 1 ;
 	}
 
@@ -1244,6 +1269,7 @@ unsigned char osrdch (void)
 	while (!rdkey (&key))
 	{
 		SDL_Delay (5) ;
+		if (SDL_GetMouseState (NULL, NULL) & 1) oskon () ;
 		trap () ;
 	}
 	return key ;
@@ -1443,16 +1469,8 @@ void osline (char *buffer)
 			case 22:
 				if (SDL_HasClipboardText ())
 				    {
-					char *t = SDL_GetClipboardText () ;
-					char *s = t ;
-					while ((*s >= ' ') && (p < (buffer + 255)))
-					    {
-						oswrch (*s) ;
-						memmove (p + 1, p, buffer + 255 - p) ;
-						*p++ = *s++ ;
-					    }
-					*(buffer + 255) = 0x0D ;
-					SDL_free (t) ;
+					*(keystr + 0) = SDL_GetClipboardText () ;
+					keyptr = (unsigned char *) *(keystr + 0) ;
 				    }
 				break ;
 
@@ -2108,7 +2126,7 @@ static SDL_RWops *lookup (void *chan)
 }
 
 // Load a file into memory:
-void osload (char *p, void *addr, int max)
+void osload (char *p, void *addr, unsigned int max)
 {
 	int n ;
 	SDL_RWops *file ;
@@ -2124,7 +2142,7 @@ void osload (char *p, void *addr, int max)
 }
 
 // Save a file from memory:
-void ossave (char *p, void *addr, int len)
+void ossave (char *p, void *addr, unsigned int len)
 {
 	int n ;
 	SDL_RWops *file ;
@@ -2381,6 +2399,12 @@ long long getext (void *chan)
 	if (newptr > size)
 		return newptr ;
 	return size ;
+}
+
+// Set file size (if possible):
+void setext (void *chan, long long ptr)
+{
+	error (255, "Sorry, not implemented") ;
 }
 
 // Get EOF status:

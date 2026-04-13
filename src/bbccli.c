@@ -1,13 +1,13 @@
 /*****************************************************************\
 *       32-bit or 64-bit BBC BASIC for SDL 2.0                    *
-*       (C) 2017-2022  R.T.Russell  http://www.rtrussell.co.uk/   *
+*       (C) 2017-2026  R.T.Russell  http://www.rtrussell.co.uk/   *
 *                                                                 *
 *       The name 'BBC BASIC' is the property of the British       *
 *       Broadcasting Corporation and used with their permission   *
 *                                                                 *
 *       bbccli.c: Command Line Interface (OS emulation)           *
 *       This module runs in the context of the interpreter thread *
-*       Version 1.33a, 14-Oct-2022                                *
+*       Version 1.44a, 18-Mar-2026                                *
 \*****************************************************************/
 
 #include <stdlib.h>
@@ -74,6 +74,7 @@ static int BBC_RWclose (struct SDL_RWops* context)
 char *setup (char *dst, char *src, char *ext, char term, unsigned char *pflag)
 {
 	unsigned char flag = 0 ;
+	char *limit = dst + 0x100 ;
 
 	while (*src == ' ') src++ ;		// Skip leading spaces
 	if ((*src == '"') && (term != '"'))
@@ -91,7 +92,7 @@ char *setup (char *dst, char *src, char *ext, char term, unsigned char *pflag)
 	while (1)
 	{
 		char ch = *src++ ;
-		if ((ch == ',') || (ch == 0x0D) || (ch == term))
+		if (((ch == ',') && (term == ' ')) || (ch == 0x0D) || (ch == term))
 			break ;
 		flag |= BIT0 ;			// Flag filename
 		if (ch == '.')
@@ -102,6 +103,7 @@ char *setup (char *dst, char *src, char *ext, char term, unsigned char *pflag)
 			flag |= BIT1 ;		// Flag path present
 		}
 		*dst++ = ch ;
+		if (dst >= limit) error (204, "Bad name") ;
 	}
 
 	if (flag & BIT7)
@@ -111,8 +113,10 @@ char *setup (char *dst, char *src, char *ext, char term, unsigned char *pflag)
 	}
 	else if (flag & BIT0)
 	{
+		int n = strlen(ext) ;
+		if (dst + n >= limit) error (204, "Bad name") ;
 		strcpy (dst, ext) ;
-		dst += strlen (ext) ;
+		dst += n ;
 	}
 
 	if (pflag != NULL)
@@ -238,8 +242,7 @@ void oscli (char *cmd)
 		return ;
 
 	q = memchr (cmd, 0x0D, sizeof(cpy)) ;
-	if (q == NULL)
-		error (204, "Bad name") ;
+	if (q == NULL) return ;
 	memcpy (cpy, cmd, q - cmd) ;
 	cpy[q - cmd] = 0 ;
 	p = cpy ;
@@ -488,6 +491,10 @@ void oscli (char *cmd)
 			sscanf (p, "%i", &n) ;
 			switch (n)
 			    {
+				case 32:
+					liston &= ~BIT0 ;
+					liston |= BIT1 ;
+					break ;
 				case 40:
 					liston &= ~(BIT0 + BIT1) ;
 					break ;
@@ -539,6 +546,15 @@ void oscli (char *cmd)
 					quiet () ;
 				kbdqr = kbdqw ;
 			    }
+			else if (n == 19)
+			    {
+				pushev (EVT_REFLAG, (void *) 0x201, 0) ;
+				waitev () ;
+				while (reflag & 1)
+					SDL_Delay (1) ;
+			    }
+			else if (n == 20)
+				memset (usrchr, 0, 256) ;
 			else if (n == 21)
 			    {
 				if (b == 0)
@@ -680,7 +696,7 @@ void oscli (char *cmd)
 				while (*p == ' ') p++ ;
 				if (*p == '+')
 					n = strtol (p + 1, &p, 16) ;
-				else
+				else if (*p != 0x0D)
 					n = (char *) (size_t) strtoull (p, &p, 16) - q ;
 			    }
 			if ((n <= 0) && ((q < (char *)userRAM) || (q >= (char *)userTOP)))
@@ -738,7 +754,7 @@ void oscli (char *cmd)
 				if ((rect.h == 0) && (col == 0))
 				    {
 					rect.w = 0 ;
-					sscanf (p, "%x %i, %i, %x", (int*) &addr, &rect.x, &rect.y, &col) ;
+					sscanf (p, "%p %i, %i, %x", &addr, &rect.x, &rect.y, &col) ;
 				    }
 				rect.w /= 2 ;
 				rect.h /= 2 ;
@@ -848,7 +864,7 @@ void oscli (char *cmd)
 				while (*p == ' ') p++ ;
 				if (*p == '+')
 					n = strtol (p + 1, &p, 16) ;
-				else
+				else if (*p != 0x0D)
 					n = (char *) (size_t) strtoull (p, &p, 16) - q ;
 			    }
 			if (n <= 0)
@@ -989,7 +1005,7 @@ void oscli (char *cmd)
 				while (*p == ' ') p++ ;
 				if (*p == '+')
 					h = strtol (p + 1, &p, 16) ;
-				else
+				else if (*p != 0x0D)
 					h = strtoull (p, &p, 16) - s ;
 				b = s & 0xFFFFFFFF ;
 			    }

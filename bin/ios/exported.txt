@@ -48,6 +48,7 @@ _SDL_CreateSystemCursor
 _SDL_CreateTexture
 _SDL_CreateTextureFromSurface
 _SDL_CreateThread
+_SDL_CreateThreadWithStackSize
 _SDL_CreateWindow
 _SDL_CreateWindowAndRenderer
 _SDL_CreateWindowFrom
@@ -196,6 +197,7 @@ _SDL_GetTextureColorMod
 _SDL_GetThreadID
 _SDL_GetThreadName
 _SDL_GetTicks
+_SDL_GetTicks64
 _SDL_GetTouchDevice
 _SDL_GetTouchFinger
 _SDL_GetVersion
@@ -331,8 +333,10 @@ _SDL_MixAudioFormat
 _SDL_MouseIsHaptic
 _SDL_NumHaptics
 _SDL_NumJoysticks
+_SDL_NumSensors
 _SDL_OpenAudio
 _SDL_OpenAudioDevice
+_SDL_OpenURL
 _SDL_PauseAudio
 _SDL_PauseAudioDevice
 _SDL_PeepEvents
@@ -403,6 +407,20 @@ _SDL_SemTryWait
 _SDL_SemValue
 _SDL_SemWait
 _SDL_SemWaitTimeout
+_SDL_SensorClose
+_SDL_SensorFromInstanceID
+_SDL_SensorGetData
+_SDL_SensorGetDataWithTimestamp
+_SDL_SensorGetDeviceInstanceID
+_SDL_SensorGetDeviceName
+_SDL_SensorGetDeviceNonPortableType
+_SDL_SensorGetDeviceType
+_SDL_SensorGetInstanceID
+_SDL_SensorGetName
+_SDL_SensorGetNonPortableType
+_SDL_SensorGetType
+_SDL_SensorOpen
+_SDL_SensorUpdate
 _SDL_SetAssertionHandler
 _SDL_SetClipRect
 _SDL_SetClipboardText
@@ -512,6 +530,7 @@ _TTF_FontHeight
 _TTF_FontLineSkip
 _TTF_GetFontHinting
 _TTF_GetFontKerning
+_TTF_GetFontKerningSizeGlyphs
 _TTF_GetFontOutline
 _TTF_GetFontStyle
 _TTF_GlyphIsProvided
@@ -668,3 +687,5 @@ _SDL_memset
 _SDL_memcpy
 _SDL_memcmp
 _SDL_free
+_getsockname
+_szNotice

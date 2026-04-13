@@ -1,13 +1,13 @@
 /*****************************************************************\
 *       32-bit or 64-bit BBC BASIC for SDL 2.0                    *
-*       (C) 2017-2023  R.T.Russell  http://www.rtrussell.co.uk/   *
+*       (C) 2017-2026  R.T.Russell  http://www.rtrussell.co.uk/   *
 *                                                                 *
 *       The name 'BBC BASIC' is the property of the British       *
 *       Broadcasting Corporation and used with their permission   *
 *                                                                 *
 *       bbcvdu.c  VDU emulator and graphics drivers               *
 *       This module runs in the context of the GUI thread         *
-*       Version 1.34c, 01-Mar-2023                                *
+*       Version 1.44a, 13-Mar-2026                                *
 \*****************************************************************/
 
 #include <stdlib.h>
@@ -299,7 +299,7 @@ static void ascale (int *x, int *y)
 // calculate radius:
 static int radius (int cx, int cy, int rx, int ry)
 {
-	return (int)(sqrt ((rx - cx) * (rx - cx) + (ry - cy) * (ry - cy))) & -2 ;
+	return (int)(sqrt ((rx - cx) * (rx - cx) + (ry - cy) * (ry - cy))) ;
 }
 
 // calculate arctangent (degrees 0-360):
@@ -1027,6 +1027,8 @@ static void vmove (char code, int dx, int dy)
 		int l, r, t, b ;
 		grawin (&l, &r, &t, &b) ;
 		cmove (code | BIT5, dx, dy, &lastx, &lasty, l, t, r, b) ;
+		*((unsigned char*)&pixelx + 3) = 0 ;
+		*((unsigned char*)&pixely + 3) = 0 ;
 	}
 	else
 		cmove (code, dx, dy, &textx, &texty, textwl, textwt, textwr, textwb) ;
@@ -1239,8 +1241,6 @@ static void rescol (void)
 // Change to a new screen mode:
 static void newmode (short wx, short wy, short cx, short cy, short nc, signed char bc) 
 {
-	SDL_Texture *tex ;
-
 	if (cx < 8) cx = 8 ;
         if (cy < 8) cy = 8 ;
 	sizex = wx ;
@@ -1252,8 +1252,6 @@ static void newmode (short wx, short wy, short cx, short cy, short nc, signed ch
 	cursb = cy ;
 	colmsk = nc - 1 ;
 
-	tex = SDL_GetRenderTarget (memhdc) ;
-	SDL_SetRenderTarget (memhdc, NULL) ;
 #if defined(__ANDROID__) || defined(__IPHONEOS__)
 	{
 		int w, h, wr, hr ;
@@ -1268,15 +1266,17 @@ static void newmode (short wx, short wy, short cx, short cy, short nc, signed ch
 #else
 	{
 		int x, y ;
+		SDL_Texture *tex = SDL_GetRenderTarget (memhdc) ;
+		SDL_SetRenderTarget (memhdc, NULL) ;
 		SDL_DisplayMode dm ;
 		SDL_SetWindowSize (hwndProg, wx, wy) ;
 		SDL_GetDesktopDisplayMode (0, &dm) ;
 		SDL_GetWindowPosition (hwndProg, &x, &y) ;
 		if ((x < 0) || (y < 0) || ((x + wx) > dm.w) || ((y + wy) > dm.h))
 		    SDL_SetWindowPosition (hwndProg, (dm.w - wx) >> 1, (dm.h - wy) >> 1) ;
+		SDL_SetRenderTarget (memhdc, tex) ;
 	}
 #endif
-	SDL_SetRenderTarget (memhdc, tex) ;
 
 	// Set font
 	if ((modeno == 7) || ((modeno == -1) && (cx >= 16) && (cy >= 20) && ((bc & 1) == 0)))
@@ -1384,7 +1384,7 @@ static void qmove (char code)
 static void plotns (unsigned char al, int cx, int cy)
 {
 	int style = 0 ;
-	unsigned char rop = 0, col = 0 ;
+	unsigned char rop = 5, col = 0 ;
 	int lx, ly, px, py ;
 	short vx[4], vy[4] ;
 	SDL_Rect rect ;
@@ -1663,6 +1663,12 @@ static void plot (unsigned char code, short xs, short ys)
 {
 	int xpos = xs, ypos = ys ;
 
+	if (code >= 144)
+	    {
+		*((unsigned char*)&pixelx + 3) = 0 ;
+		*((unsigned char*)&pixely + 3) = 0 ;
+	    }
+
 	if ((code & BIT2) != 0)
 	    {
 		xpos += origx ;
@@ -1748,9 +1754,12 @@ static void colour (signed char al)
 //VDU 19, l, p, 0, 0, 0 - SET PHYSICAL COLOUR
 //VDU 19, l,-1, r, g, b (rgb: 6-bits)
 //VDU 19, l,16, R, G, B (RGB: 8-bits)
+//VDU 19, l+128, A, R, G, B
 static void setpal (unsigned char n, signed char m, unsigned char r, unsigned char g, unsigned char b)
 {
-	switch (m)
+	if (n > 127)
+		palette[(int) (n & 0x7F)] = (m << 24) | (b << 16) | (g << 8) | r ;
+	else switch (m)
 	{
 	case 16:
 		palette[(int) n] = 0xFF000000 | (b << 16) | (g << 8) | r ;
@@ -1913,13 +1922,18 @@ static void reswin (void)
 	if ((w != 0) && (h != 0))
 	    {
 		SDL_Texture *tex = SDL_GetRenderTarget (memhdc) ;
-		SDL_SetRenderTarget (memhdc, NULL) ;
-		SDL_SetWindowSize (hwndProg, w, h) ;
-		SDL_SetRenderTarget (memhdc, tex) ;
+		if (tex)
+		    {
+			SDL_SetRenderTarget (memhdc, NULL) ;
+			SDL_SetWindowSize (hwndProg, w, h) ;
+			SDL_SetRenderTarget (memhdc, tex) ;
+		    }
 	    }
 	sizex = w ;
 	sizey = h ;
 	zoom = 0x8000 ;
+	panx = 0 ;
+	pany = 0 ;
 	iniwin () ;
 }
 
@@ -2390,13 +2404,18 @@ long long apicall_ (long long (*APIfunc) (size_t, size_t, size_t, size_t, size_t
 			volatile double e, volatile double f, volatile double g, volatile double h)
 	{
 		long long result ;
-#ifdef _WIN32
+#ifdef __WIN64__
+		static void* savesp ;
+		asm ("mov %%rsp,%0" : "=m" (savesp)) ;
+#elif defined _WIN32
 		static void* savesp ;
 		asm ("mov %%esp,%0" : "=m" (savesp)) ;
 #endif
 		result = APIfunc (p->i[0], p->i[1], p->i[2], p->i[3], p->i[4], p->i[5],
 				p->i[6], p->i[7], p->i[8], p->i[9], p->i[10], p->i[11]) ;
-#ifdef _WIN32
+#ifdef __WIN64__
+		asm ("mov %0,%%rsp" : : "m" (savesp)) ;
+#elif defined _WIN32
 		asm ("mov %0,%%esp" : : "m" (savesp)) ;
 #endif
 		return result ;
@@ -2420,13 +2439,18 @@ double fltcall_ (double (*APIfunc) (size_t, size_t, size_t, size_t, size_t, size
 			volatile double e, volatile double f, volatile double g, volatile double h)
 	{
 		double result ;
-#ifdef _WIN32
+#ifdef __WIN64__
+		static void* savesp ;
+		asm ("mov %%rsp,%0" : "=m" (savesp)) ;
+#elif defined _WIN32
 		static void* savesp ;
 		asm ("mov %%esp,%0" : "=m" (savesp)) ;
 #endif
 		result = APIfunc (p->i[0], p->i[1], p->i[2], p->i[3], p->i[4], p->i[5],
 				p->i[6], p->i[7], p->i[8], p->i[9], p->i[10], p->i[11]) ;
-#ifdef _WIN32
+#ifdef __WIN64__
+		asm ("mov %0,%%rsp" : : "m" (savesp)) ;
+#elif defined _WIN32
 		asm ("mov %0,%%esp" : : "m" (savesp)) ;
 #endif
 		return result ;
